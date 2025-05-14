@@ -1,0 +1,1003 @@
+---
+title: "4 Assessing the differential effectiveness of treatment across years and blocks"
+format: docx
+editor: visual
+---
+
+# 3 \| Assessing the differential effectiveness of treatment across years and blocks
+
+```{r load packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)  
+library(dplyr)
+library(report)
+library(lme4)
+library(ggeffects)
+library(effects)
+library(easystats)
+library(marginaleffects)
+library(gridExtra)
+library(knitr)
+library(forcats)
+library(DHARMa)
+library(coefplot)
+library(emmeans)
+```
+
+```{r load data, echo=FALSE, message=FALSE, warning=FALSE}
+wytham_cliamte_data <- 
+  read.csv(
+    "hadley_cliamte_data_monthly_2000-2024.csv"
+  )
+
+hadley_climate_data_daily_2024 <-
+  read.csv(
+    "hadley_climate_data_daily_2024.csv"
+    )
+
+ag_biomass_all_years <- 
+  read.csv(
+    "MASTER_Biomass_2016_2024.csv"
+  )
+```
+
+## 3.1 \| Have precipitation patterns in 2024 within the experimental system differed to that in typical years?
+
+##### Clean and format data
+
+```{r organise wytham_cliamte_data, message=FALSE, warning=FALSE}
+wytham_cliamte_cleaned <- 
+  
+  wytham_cliamte_data %>% 
+  
+  #Convert 'date' column to Date type 
+  mutate(date = dmy(date)) %>%
+  
+  #Create a new column called month to contain shortform month labels
+  mutate(month = factor(month(date, label = TRUE, abbr = TRUE), 
+                              levels = month.abb)) %>%
+  
+  #Crop the data frame to only relevant years (2017 onwards)
+  filter(as.numeric(year) > 2016) 
+```
+
+```{r create a df with yearly totals for wytham_climate_cleaned, message=FALSE, warning=FALSE}
+#Create a df containing yearly totals for wytham_cliamte_cleaned
+wytham_cliamte_yearly_totals <- 
+  
+  wytham_cliamte_cleaned %>%
+  
+  #Group by year 
+  group_by(year) %>%
+  
+  #Calculate total rainfal for each year 
+  summarize(total_rainfall = 
+              sum(rainfall, 
+                  na.rm = TRUE)) %>%
+  
+  #Convert year to a character 
+  mutate(year = as.numeric(year))
+```
+
+##### Plot data
+
+```{r plot wytham_cliamte_yearly_totals, message+FALSE, warning=FALSE}
+yearly_rainfall_plot <- 
+  
+  #Create plot
+  ggplot(
+    wytham_cliamte_yearly_totals, 
+    aes(x = factor(year), 
+        y = total_rainfall)) +
+  
+  #Add bars 
+  geom_bar(stat = "identity", 
+           fill = "skyblue", 
+           width = 0.85) +
+  
+  #Change the axis labels and title 
+  labs(title = "Total Rainfall by Year", 
+       x = "Year", 
+       y = "Total Rainfall (mm)") +
+  
+  #Set the theme
+  theme_bw(base_family = "Times New Roman") +   
+  theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_text(size = 17, margin = margin(t = 13), family = "Times New Roman"),
+    axis.title.y = element_text(size = 17, margin = margin(r = 10), family = "Times New Roman"),
+    axis.text.x = element_text(size = 13, family = "Times New Roman"),
+    axis.text.y = element_text(size = 13, family = "Times New Roman"),
+    plot.title = element_text(size = 15, family = "Times New Roman", hjust = 0.5)
+  )
+    
+```
+
+```{r print yearly_rainfall_plot, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+print(yearly_rainfall_plot)
+```
+
+##### Statistically test if 2024 has been a wetter year to other experimental years
+
+```{r test if 2024 experienced unusually high levels of precipitation, message=FALSE, warning=FALSE}
+#Make a new df for 2017-2023 total annual precipitation
+annual_precip_2017_2023 <- 
+  subset(
+    wytham_cliamte_yearly_totals, 
+    year >= 2017 & year <= 2023)
+
+#Calculate the mean rainfall for 2017-2023
+precip_2017_2023_mean <- 
+  mean(
+    annual_precip_2017_2023$total_rainfall, 
+    na.rm = TRUE)
+
+#Calculate standard deviation for 2017-2023
+precip_2017_2023_sd   <- 
+  sd(
+    annual_precip_2017_2023$total_rainfall, 
+    na.rm = TRUE)
+
+#Calculate sample size for 2017-2023
+n_2017_2023 <- 
+  nrow(
+    annual_precip_2017_2023)
+
+#Get the t critical value for 95% CI (two-sided) with df = n - 1
+t_precip_2017_2023 <- 
+  qt(
+    0.975, 
+    df = n_2017_2023 - 1)
+
+#Calculate the 95% confidence interval
+#Lower CI
+ci_lower_precip_2017_2023 <- 
+  precip_2017_2023_mean - 
+  t_precip_2017_2023 * 
+  (precip_2017_2023_sd / sqrt(n_2017_2023))
+#Upper CI
+ci_upper_precip_2017_2023 <- 
+  precip_2017_2023_mean + 
+  t_precip_2017_2023 * 
+  (precip_2017_2023_sd / sqrt(n_2017_2023))
+
+# Extract the 2024 rainfall value
+precip_2024 <- 
+  subset(
+    wytham_cliamte_yearly_totals, 
+    as.numeric(as.character(year)) == 2024)$total_rainfall
+```
+
+```{r print results for test of difference in total annual rainfall, message=FALSE, warning=FALSE}
+# Print the results
+cat("Baseline (2016-2023) Mean:", precip_2017_2023_mean, "\n")
+cat("95% CI:", ci_lower_precip_2017_2023, "-", ci_upper_precip_2017_2023, "\n")
+cat("2024 Total Rainfall:", precip_2024, "\n")
+
+# Check if 2024 lies within the CI
+if(precip_2024 >= ci_lower_precip_2017_2023 & precip_2024 <= ci_upper_precip_2017_2023){
+  cat("2024 rainfall lies within the 95% CI of 2016-2023.\n")
+} else {
+  cat("2024 rainfall is significantly different from the 2016-2023 average.\n")
+}
+```
+
+------------------------------------------------------------------------
+
+## 3.2 \| Is aboveground biomass production related to rainfall?
+
+##### Clean and format the data
+
+```{r organise ag_biomass_all_years, message=FALSE, warning=FALSE}
+#Make a df containing ag biomass in gm2
+ag_biomass_cleaned <- 
+  
+  ag_biomass_all_years %>%
+  
+  #Group the data by treatment, block, harvest and year
+  group_by(treatment, 
+           block, 
+           harvest, 
+           year) %>% 
+  
+  #Sum the biomasses in each group to combine graminoid, forbe and legume biomass for each treatment and block to make a new column called aboveground_biomass_g
+  summarise(aboveground_biomass_g = 
+              sum(biomass_g)) %>%  
+  
+  #Ungroup the data 
+  ungroup()  %>%
+  
+  #Calculate the biomass per 1m^2 (rather than 0.25x1m)
+  mutate(
+    aboveground_biomass_gm2 = 
+      aboveground_biomass_g * 4) %>%
+  
+  #Add a column for plot number 
+  mutate(plot_number = 
+           as.integer(factor(paste(treatment, block), 
+                             levels = unique(paste(treatment, block))))) %>%
+ 
+  #Extract data for only 2017 onwards 
+  filter(as.numeric(year) > 2016) 
+```
+
+```{r create a df containing only ambient aboveground biomass, message=FALSE, warning=FALSE}
+ag_biomass_ambient <-
+  
+  ag_biomass_cleaned %>%
+  
+    filter(treatment %in% c("Ambient")) %>%
+  
+  #Group the data by treatment and block 
+  group_by(block, year, plot_number) %>%
+  
+  #Sum the biomasses in each group to combine mid season and end season 
+  summarise(aboveground_biomass_gm2 = sum(aboveground_biomass_gm2)) %>%
+  
+  #Ungroup
+  ungroup() 
+```
+
+```{r format ag_biomass_all_years data, message=FALSE, warning=FALSE}
+#Create a df containing aboveground biomass and yearly precipitation totals 
+ambient_biomass_with_rainfall <- 
+  
+  ag_biomass_ambient %>%
+  
+  left_join(
+    wytham_cliamte_yearly_totals, 
+    by = c("year"))
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for ambient_biomass_with_rainfall, message=FALSE, warning=FALSE}
+#Caulculate mean ambient biomassfor each year 
+summary_ambient <- 
+  
+  ambient_biomass_with_rainfall %>%
+  
+  #Group by year and total_rainfall
+  group_by(
+    year, 
+    total_rainfall) %>%
+  
+  #Calculate the mean 
+ summarise(
+  mean_ambient_biomass = mean(aboveground_biomass_gm2), 
+  se = sd(mean_ambient_biomass) / sqrt(n()),  
+  ci = 1.96 * se)
+```
+
+##### Plot the data
+
+```{r plot ambient_biomass_with_rainfall, message=FALSE, warning=FALSE}
+#Plot the correlation between aboveground ambient biomass and precipitation 
+ambient_biomass_with_rainfall_plot <- 
+  
+  #Make the plot
+  ggplot(
+  ambient_biomass_with_rainfall, 
+       aes(
+         x = total_rainfall, 
+         y = aboveground_biomass_gm2)) +
+  
+  #Add raw data points 
+  geom_point(
+    aes(
+      color = factor(year)), 
+    size = 2) + 
+  
+  #Add a data point for the mean anual rainfall
+  geom_point(
+    data = summary_ambient, 
+    aes(x = total_rainfall, 
+        y = mean_ambient_biomass), 
+    shape = 17, 
+    size = 2, 
+    color = "black") +
+  
+  #Add a linear regression line 
+  geom_smooth(
+    method = "lm", 
+    se = FALSE, 
+    color = "black") + 
+ 
+  #Add labels 
+  labs(
+    title = "Correlation Between Ambient Biomass and Yearly Rainfall",
+    x = "Total Annual Rainfall (mm)",
+    y = "Ambient Aboveground Biomass Biomass (gm2)",
+    color = "Year"
+  ) +
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 5, family= "Times New Roman"), 
+    axis.text.y = element_text(size = 5, family= "Times New Roman"), 
+    axis.title.x = element_text(size = 7, margin = margin(t = 13), family= "Times New Roman"),
+    axis.title.y = element_text(size = 7, margin = margin(r = 10), family= "Times New Roman"),
+    legend.position = "none",
+    title = element_text(size=5, family= "Times New Roman")
+    )
+```
+
+```{r print ambient_biomass_with_rainfall_plot, message=FALSE, warning=FALSE, fig.width=5, fig.height=3}
+print(ambient_biomass_with_rainfall_plot)
+```
+
+##### Simple test for correlation
+
+```{r simple correlation test for ambient_biomass_with_rainfall, message=FALSE, warning=FALSE}
+#Test for correlation between ambient biomass and total rainfall
+cor.test(ambient_biomass_with_rainfall$total_rainfall, ambient_biomass_with_rainfall$aboveground_biomass_gm2, method=c("pearson"))
+```
+
+##### Make MEM
+
+```{r MEM for ambient_biomass_with_rainfall}
+#Make the mixed effect model called me_agbp (ambient aboveground biomass, precipitation)
+#Response variable = Aboveground biomass 
+#Fixed effect = Total rainfall 
+#Random effect = Block, Plot number 
+me_agbp <- 
+  lmer(
+    aboveground_biomass_gm2 
+    ~ total_rainfall
+    + (1 | block),
+    data = 
+      ambient_biomass_with_rainfall)
+```
+
+##### Test assumptions of the MEM
+
+```{r me_agbp MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_agbp))  
+qqline(resid(me_agbp), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_agbp)
+
+#Test random effect variance 
+ggplot(
+  ambient_biomass_with_rainfall,
+  aes(x = factor(block),
+      y = aboveground_biomass_gm2
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Aboveground Biomass (gm2)") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at me_agbp output, message=FALSE, warning=FALSE}
+plot_predictions(me_agbp, by = "total_rainfall", re.form = NA)
+coefplot::coefplot(me_agbp)
+```
+
+```{r me_agbp MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_agbp)
+```
+
+------------------------------------------------------------------------
+
+## 3.3 \| Is drought treatment more effective in drier years?
+
+##### Clean and format the data
+
+```{r make a df containing ambient and drought aboveground biomass and drought effect, message=FALSE, warning=FALSE}
+ag_biomass_ambient_drought <-
+  
+  ag_biomass_cleaned %>%
+  
+  #Filter to only include ambient and drought 
+  filter(treatment %in% c("Ambient", "Drought")) %>%
+  
+  #Group the data by treatment and block 
+  group_by(block, year, treatment) %>%
+  
+  #Sum the biomasses in each group to combine mid season and end season 
+  summarise(aboveground_biomass_gm2 = sum(aboveground_biomass_gm2)) %>%
+  
+  #Ungroup
+  ungroup()  %>%
+  
+  #Make the data into a wide format 
+  pivot_wider(
+    names_from = treatment,
+    values_from = aboveground_biomass_gm2,
+    names_prefix = "aboveground_biomass_gm2_"
+  ) %>%
+  
+  #Add a drought effect column 
+  mutate(
+    drought_effect = 
+      aboveground_biomass_gm2_Ambient 
+    - aboveground_biomass_gm2_Drought) %>% 
+  
+  #Add a column with precipitation data 
+  left_join(
+    wytham_cliamte_yearly_totals, 
+    by = c("year"))
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for ag_biomass_ambient_drought, message=FALSE, warning=FALSE}
+#Caulculate mean ambient biomassfor each year 
+summary_drought_effect <- 
+  
+  ag_biomass_ambient_drought %>%
+  
+  #Group by year and total_rainfall
+  group_by(
+    year, 
+    total_rainfall) %>%
+  
+  #Calculate the mean 
+ summarise(
+  mean_drought_effect = mean(drought_effect), 
+  se = sd(drought_effect) / sqrt(n()),  
+  ci = 1.96 * se)
+```
+
+##### Plot the data
+
+```{r plot ag_biomass_ambient_drought, message=FALSE, warning=FALSE}
+#Plot the correlation between drought effect and precipitation 
+drought_effect_with_rainfall_plot <- 
+  
+  #Make the plot
+  ggplot(
+  ag_biomass_ambient_drought, 
+       aes(
+         x = total_rainfall, 
+         y = drought_effect)) +
+  
+  #Add a data point for the mean anual rainfall
+  geom_point(
+    data = summary_drought_effect, 
+    aes(x = total_rainfall, 
+        y = mean_drought_effect), 
+    shape = 16, 
+    size = 3, 
+    color = "#D55E00") +
+  
+  geom_text(
+  data = summary_drought_effect,
+  aes(x = total_rainfall, y = mean_drought_effect, label = year),
+  family = "Times New Roman",
+  size = 5,
+  hjust = -0.5, 
+) +
+  
+  #Add a linear regression line 
+  geom_smooth(
+    method = "lm", 
+    se = FALSE, 
+    color = "black") + 
+ 
+  #Add labels 
+  labs(
+    title = "Correlation Between Drought Effect and Yearly Rainfall",
+    x = "Total Annual Rainfall (mm)",
+    y = expression("Aboveground Drought-Effect (gm"^-2*")"),
+    color = "Year"
+  ) +
+  
+   expand_limits(
+    x = c(min(ag_biomass_ambient_drought$total_rainfall), 
+          max(ag_biomass_ambient_drought$total_rainfall) + 15)) + 
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_text(size = 17, margin = margin(t = 13), family = "Times New Roman"),
+    axis.title.y = element_text(size = 17, margin = margin(r = 10), family = "Times New Roman"),
+    axis.text.x = element_text(size = 13, family = "Times New Roman"),
+    axis.text.y = element_text(size = 13, family = "Times New Roman"),
+    plot.title = element_text(size = 15, family = "Times New Roman", hjust = 0.5))
+```
+
+```{r print drought_effect_with_rainfall_plot, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
+print(drought_effect_with_rainfall_plot)
+```
+
+##### Explore why there are so many negative values for drought effect
+
+```{r plot drought_effect_with_rainfall_plot with raw data points, message=FALSE, warning=FALSE, fig.width=5, fig.height=4}
+#Plot the correlation between drought effect and precipitation 
+drought_effect_with_rainfall_plot +   
+  
+  #Add raw data points 
+  geom_point(
+    aes(
+      color = factor(year)), 
+    size = 2) +
+  
+  #Make sure the legend is at the bottom
+  theme(legend.position = "bottom")
+```
+
+-   Negative values are mostly found in 2021 and 2023, explore why this may be
+
+```{r plot ambient and drought biomass by year, message=FALSE, warning=FALSE, fig.width=10, fig.height=5}
+#Drought biomass by year 
+ggplot(ag_biomass_ambient_drought, 
+       aes(x = year, 
+           y = aboveground_biomass_gm2_Drought, 
+           colour = block)) +
+  geom_point(size = 3) + # Scatter plot with color by year
+  geom_line() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+#Ambient biomass by year 
+ggplot(ag_biomass_ambient_drought, 
+       aes(x = year, 
+           y = aboveground_biomass_gm2_Ambient, 
+           colour = block)) +
+  geom_point(size = 3) + # Scatter plot with color by year
+  geom_line() +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+-   2021 and 2023 both appear to show more drought biomass than in typical years, this is reflected in the ambient biomass graph, but to a much lower degree and not in all plots.
+
+-   This may be because drought treatment was less effective in these years (perhaps as a result of increased precipitation).
+
+-   Therefore randomness in ambient and drought biomass allows drought effect to become negative.
+
+##### Simple test for correlation
+
+```{r simple correlation test for ag_biomass_ambient_drought, message=FALSE, warning=FALSE}
+#Test for correlation between drought effect and total rainfall
+cor.test(ag_biomass_ambient_drought$total_rainfall,
+         ag_biomass_ambient_drought$drought_effect, 
+         method=c("pearson"))
+```
+
+##### Make MEM
+
+```{r MEM for ag_biomass_ambient_drought}
+#Make the mixed effect model called me_dep (drought effect, precipitation)
+#Response variable = Drought effect  
+#Fixed effect = Total rainfall 
+#Random effect = Block
+me_dep <- 
+  lmer(
+    drought_effect 
+    ~ total_rainfall 
+    + (1 | block),
+    data = 
+      ag_biomass_ambient_drought)
+```
+
+##### Test assumptions of the MEM
+
+```{r me_dep MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_dep))  
+qqline(resid(me_dep), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_dep)
+
+#Test random effect variance 
+ggplot(
+  ag_biomass_ambient_drought,
+  aes(x = factor(block),
+      y = drought_effect
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Drought effect") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at me_dep output, message=FALSE, warning=FALSE}
+plot_predictions(me_dep, by = "total_rainfall", re.form = NA)
+coefplot::coefplot(me_dep)
+```
+
+```{r me_dep MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_dep)
+confint(me_dep)
+```
+
+------------------------------------------------------------------------
+
+## 3.4 \| Is drought treatment more effective at the end of the season?
+
+##### Fit simple models
+
+```{r ag_biomass_cleaned simple MEM, message=FALSE, warning=FALSE}
+#Fit simple models to see if there is a differnce between treatment at the beginging and at the end of the season 
+
+#create a dataset containing only mid season biomasses 
+aboveground_biomass_cleaned_mid <- 
+  ag_biomass_cleaned %>%
+  filter(harvest == "Mid")
+#run a mixed effect model to see if aboveground biomass varies between treatments 
+me_aboveground_analysis_mid <- 
+  lmer(aboveground_biomass_gm2 ~  
+         treatment + year + 
+         (1|block) + (1|plot_number), 
+       data=aboveground_biomass_cleaned_mid)
+#look at the MEM
+summary(me_aboveground_analysis_mid)
+
+#create a dataset containing only end of season biomasses 
+aboveground_biomass_cleaned_end <- 
+  ag_biomass_cleaned %>%
+  filter(harvest == "End")
+#run a mixed effect model to see if aboveground biomass varies between treatments 
+me_aboveground_analysis_end <- 
+  lmer(aboveground_biomass_gm2 ~  
+         treatment + year  + 
+         (1|block) + (1|plot_number), 
+       data=aboveground_biomass_cleaned_end)
+#look at the MEM
+summary(me_aboveground_analysis_end)
+```
+
+##### Make an MEM
+
+```{r make MEM for ag_biomass_cleaned, message=FALSE, warning=FALSE}
+#three way interaction 
+#random effects: block, plot 
+#response variable: log(aboveground biomass+1) 
+  #aboveground biomass has been logged to account for large differences between begginging of season and end of season biomass values
+  #1 has been added to account for 0 values which cannot be logged 
+#fixed effects: harvest and treatment 
+me_aboveground_analysis_3way <- 
+  lmer(aboveground_biomass_gm2 ~ 
+         harvest * treatment * year + 
+         (1|block) + (1|plot_number), 
+       data=ag_biomass_cleaned)
+```
+
+##### Test assumptions of the MEM
+
+```{r test assumptions of me_aboveground_analysis_3way, message=FALSE, warining=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_aboveground_analysis_3way))  
+qqline(resid(me_aboveground_analysis_3way), 
+       col = "red", lwd = 2)
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_aboveground_analysis_3way)
+
+#Test random effect variance 
+ggplot(
+  ag_biomass_cleaned, 
+  aes(x = factor(block),
+      y = aboveground_biomass_gm2
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = expression("Aboveground Biomass")) +
+  theme_minimal()
+```
+
+Funnel shape on homoscedasticity plot suggests that predictor variables are on very different scales. This is a result of large differences between typical mid season and end season biomass harvest values. Log transform to solve this.
+
+##### Log transform biomass and test which MEM would be most suitable
+
+```{r ag_biomass_cleaned complex MEMs, message=FALSE, warning=FALSE}
+#make a some mixed effect models 
+#log biomass is used since there is such a large differnce between typical mid and end season harvest biomass values 
+
+#three way interaction 
+#random effects: block, plot 
+#response variable: log(aboveground biomass+1) 
+  #aboveground biomass has been logged to account for large differences between begginging of season and end of season biomass values
+  #1 has been added to account for 0 values which cannot be logged 
+#fixed effects: harvest and treatment 
+me_log_aboveground_analysis_3way <- 
+  lmer(log(aboveground_biomass_gm2+1) ~ 
+         harvest * treatment * year + 
+         (1|block) + (1|plot_number), 
+       data=ag_biomass_cleaned)
+#look at the output of the MEM
+summary(me_log_aboveground_analysis_3way)
+
+#two way interaction 
+#random effects: block, plot 
+#response variable: log(aboveground biomass+1) 
+  #aboveground biomass has been logged to account for large differences between begginging of season and end of season biomass values
+  #1 has been added to account for 0 values which cannot be logged 
+#fixed effects: harvest and treatment 
+me_log_aboveground_analysis_2way <- 
+  lmer(log(aboveground_biomass_gm2+1) ~ 
+         harvest * treatment + 
+         treatment * year + 
+         year * harvest + 
+         (1|block) + (1|plot_number), 
+       data=ag_biomass_cleaned)
+#look at the output of the MEM
+summary(me_log_aboveground_analysis_2way)
+exp(confint(me_log_aboveground_analysis_2way))
+
+#main effects only 
+#random effects: block, plot 
+#response variable: log(aboveground biomass+1) 
+  #aboveground biomass has been logged to account for large differences between begginging of season and end of season biomass values
+  #1 has been added to account for 0 values which cannot be logged 
+#fixed effects: harvest and treatment 
+me_log_aboveground_analysis_maineffects <- 
+  lmer(log(aboveground_biomass_gm2+1) ~ 
+         harvest + treatment + year + 
+         (1|block) + (1|plot_number), 
+       data=ag_biomass_cleaned)
+#look at the output of the MEM
+summary(me_log_aboveground_analysis_maineffects)
+
+#compare the model fits 
+anova(me_log_aboveground_analysis_maineffects, me_log_aboveground_analysis_2way, me_log_aboveground_analysis_3way, me_aboveground_analysis_3way)
+
+
+```
+
+##### Use marginal effects to look at the model outputs
+
+```{r looking at the models with marginal effects, message=FALSE, warning=FALSE}
+#plot the effect of treatment across harvest 
+plot_slopes(me_log_aboveground_analysis_3way, variables = "treatment", by = c("year", "harvest"))
+
+#plot predicted drought effects across years 
+plot_predictions(me_log_aboveground_analysis_3way, by = "treatment", re.form = NA)
+
+#plot predicted harvest effects across years 
+plot_predictions(me_log_aboveground_analysis_3way, by = "harvest", re.form = NA)
+
+#Plot coefficents 
+coefplot::coefplot(me_log_aboveground_analysis_3way)
+```
+
+##### Plot the data
+
+```{r create drought effects by harvest df, message=FALSE, warning=FALSE}
+#Calculate drought effect 
+ag_drought_effect_harvests <-
+  
+  ag_biomass_cleaned %>%
+  
+  #Filter to only include ambient and drought 
+  filter(treatment %in% c("Ambient", "Drought")) %>%
+  
+  #Remove the plot_number column
+  dplyr::select((-c("plot_number", "aboveground_biomass_g"))) %>%
+  
+  #Make the data into a wide format 
+  pivot_wider(
+    names_from = treatment,
+    values_from = aboveground_biomass_gm2,
+    names_prefix = "aboveground_biomass_gm2_"
+  ) %>%
+  
+  #Add a drought effect column 
+  mutate(
+    drought_effect = 
+      aboveground_biomass_gm2_Ambient 
+    - aboveground_biomass_gm2_Drought)
+```
+
+```{r summary statistics for ag_drought_effect_harvests, message=FALSE, warning=FALSE}
+#Convert harvest to a factor to ensure correct ordering
+ag_drought_effect_harvests$harvest <- 
+  factor(ag_drought_effect_harvests$harvest, levels = c("Mid", "End"))
+
+#Mean values for mid and end of harvest
+ag_drought_effect_harvests_summary <- 
+  ag_drought_effect_harvests %>%
+  drop_na() %>%
+  group_by(harvest) %>%
+  summarise( 
+    mean_drought_effect =
+      mean(drought_effect, na.rm=TRUE),
+      se = sd(drought_effect) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  ungroup()
+
+```
+
+```{r plot drought effects by harvest, message=FALSE, warning=FALSE}
+drought_effect_harvests_plot <- 
+  
+  #Make the plot
+  ggplot(ag_drought_effect_harvests_summary, 
+       aes(x = harvest, 
+           y = mean_drought_effect))  +
+  
+  #Add data points 
+  geom_point(size = 2) +
+  
+  #Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean_drought_effect - ci, 
+        ymax = mean_drought_effect + ci), 
+    width = 0.2, 
+    color = "black") + 
+  
+  #Add labels 
+  labs(
+    title = "Differnece between drought effect at the mid season and end season harvest",
+    x = "Harvest",
+    y = "Drought Effect (gm2)",
+    color = "Year"
+  ) +
+  
+  #Set theme 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 5), 
+    axis.text.y = element_text(size = 5), 
+    axis.title.x = element_text(size = 7, margin = margin(t = 13)),
+    axis.title.y = element_text(size = 7, margin = margin(r = 10)),
+    legend.position = "none",
+    title = element_text(size=5)
+    )
+```
+
+```{r print drought_effect_harvests_plot, message=FALSE, warning=FALSE, fig.width=10, fig.height=5}
+print(drought_effect_harvests_plot)
+```
+
+------------------------------------------------------------------------
+
+## 3.5 \| Is drought treatment more effective in some blocks than others
+
+##### Calculate summary statistics
+
+```{r summary statistics for summary_drought_effect_block, message=FALSE, warning=FALSE}
+#Caulculate mean ambient biomassfor each year 
+summary_drought_effect_block <- 
+  
+  ag_biomass_ambient_drought %>%
+  
+  #Group by year and total_rainfall
+  group_by(
+    block) %>%
+  
+  #Calculate the mean 
+ summarise(
+  mean_drought_effect = mean(drought_effect),
+  se = sd(drought_effect) / sqrt(n()),  
+  ci = 1.96 * se)
+```
+
+##### Plot the data
+
+```{r plot summary_drought_effect_block, message=FALSE, warning=FALSE}
+#Plot the correlation between drought effect and precipitation 
+drought_effect_by_blocks <- 
+  
+  #Make the plot
+  ggplot(
+  summary_drought_effect_block, 
+       aes(
+         x = block, 
+         y = mean_drought_effect)) +
+  
+  #Add a data point for the drought effect 
+  geom_point(
+    data = summary_drought_effect_block, 
+    aes(x = block, 
+        y = mean_drought_effect), 
+    size = 2, 
+    color = "black") +
+  
+#Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean_drought_effect - ci, 
+        ymax = mean_drought_effect + ci), 
+    width = 0.2, 
+    color = "black") + 
+  
+  #Add labels 
+  labs(
+    title = "Drought Effect by Block",
+    x = "Block",
+    y = expression("Aboveground Drought-Effect (gm"^-2*")"),
+    color = "Year"
+  ) +
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_text(size = 17, margin = margin(t = 13), family = "Times New Roman"),
+    axis.title.y = element_text(size = 17, margin = margin(r = 10), family = "Times New Roman"),
+    axis.text.x = element_text(size = 13, family = "Times New Roman"),
+    axis.text.y = element_text(size = 13, family = "Times New Roman"),
+    plot.title = element_text(size = 15, family = "Times New Roman", hjust = 0.5))
+```
+
+```{r print drought_effect_by_blocks, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
+print(drought_effect_by_blocks)
+```
+
+##### Make MEM
+
+```{r MEM for ag_biomass_ambient_drought by block, message=FALSE, warning=FALSE}
+#Make the mixed effect model called me_deb (drought effect, block)
+#Response variable = Drought effect  
+#Fixed effect = Block 
+#Random effect = Block
+me_deb <- 
+  lmer(
+    drought_effect 
+    ~ block 
+    + (1 |year),
+    data = 
+      ag_biomass_ambient_drought)
+```
+
+##### Test assumptions of the MEM
+
+```{r me_deb MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_deb))  
+qqline(resid(me_deb), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_deb)
+
+#Test random effect variance 
+ggplot(
+  ag_biomass_ambient_drought,
+  aes(x = factor(year),
+      y = drought_effect
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Year Variance", 
+    x = "Year", 
+    y = "Drought effect") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at me_deb output, message=FALSE, warning=FALSE}
+plot_predictions(me_deb, by = "block", re.form = NA)
+coefplot::coefplot(me_deb)
+```
+
+```{r me_deb MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_deb)
+
+#Look a the CIs 
+confint(me_deb)
+
+#Genarate pairwise comparisons between all blocks
+emmeans_deb <- emmeans(me_deb, ~ block)
+
+# Pairwise contrasts
+pairwise_contrasts_deb <- contrast(emmeans_deb, method = "pairwise", adjust = "tukey")
+
+#Look at the pariwise contrasts 
+pairwise_contrasts_deb
+```
