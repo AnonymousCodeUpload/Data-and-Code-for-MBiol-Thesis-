@@ -1,0 +1,21 @@
+﻿Block,Treatment ,Sample ,Mass ,Process ,Date_Time,%_Nitrogen,%_Carbon,%_Sulphur
+A,Procedural Control,PH01,0.407,soil cns,15/01/2025 15:08,0.84679,9.8446,0.076
+B,Procedural Control,PH02,0.543,soil cns,15/01/2025 15:14,0.85881,10.207,0.0705
+C,Procedural Control,PH03,0.448,soil cns,15/01/2025 14:21,0.70757,10.055,0.0539
+D,Procedural Control,PH04,0.468,soil cns,15/01/2025 14:28,0.79544,11.715,0.0636
+E,Procedural Control,PH05,0.434,soil cns,15/01/2025 15:21,0.66842,11.597,0.0603
+A,Ambient Control,PH06,0.5,soil cns,15/01/2025 15:27,0.78274,9.2686,0.0636
+B,Ambient Control,PH07,0.459,soil cns,15/01/2025 15:34,0.86419,10.766,0.0699
+C,Ambient Control,PH08,0.442,soil cns,15/01/2025 15:40,0.79434,11.482,0.0701
+D,Ambient Control,PH09,0.447,soil cns,15/01/2025 15:47,0.79114,12.48,0.0677
+E,Ambient Control,PH10,0.409,soil cns,15/01/2025 15:53,0.72812,10.581,0.0633
+A,Drought,PH11,0.435,soil cns,15/01/2025 16:00,0.69106,10.721,0.0548
+B,Drought,PH12,0.464,soil cns,15/01/2025 16:06,0.78577,9.797,0.0625
+C,Drought,PH13,0.457,soil cns,15/01/2025 16:13,0.94316,14.033,0.0737
+D,Drought,PH14,0.476,soil cns,15/01/2025 16:19,0.77874,10.634,0.0599
+E,Drought,PH15,0.471,soil cns,15/01/2025 16:44,0.92722,13.113,0.0744
+A,Irrigation,PH16,0.404,soil cns,15/01/2025 16:51,0.74932,11.633,0.0654
+B,Irrigation,PH17,0.491,soil cns,15/01/2025 16:57,0.72435,10.241,0.0578
+C,Irrigation,PH18,0.475,soil cns,15/01/2025 17:04,0.83147,11.901,0.068
+D,Irrigation,PH19,0.428,soil cns,15/01/2025 17:10,0.79174,10.114,0.064
+E,Irrigation,PH20,0.425,soil cns,15/01/2025 17:17,0.64839,11.734,0.0545
