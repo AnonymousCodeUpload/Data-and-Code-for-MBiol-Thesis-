@@ -1,0 +1,1819 @@
+---
+title: "3.1 How do root growth patterns respond to simulated drought and irrigation"
+format: docx
+editor: visual
+---
+
+# 1 \| How do root growth patterns respond to simulated drought and irrigation?
+
+```{r load packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)  
+library(dplyr)
+library(report)
+library(lme4)
+library(ggeffects)
+library(effects)
+library(easystats)
+library(marginaleffects)
+library(gridExtra)
+library(knitr)
+library(forcats)
+library(DHARMa)
+library(plotrix) 
+library(grid)
+library(coefplot)
+library(arm)
+library(car)
+```
+
+```{r load data, echo=FALSE, message=FALSE, warning=FALSE}
+ag_biomass_june24 <- 
+  read.csv(
+    "aboveground_biomass_june24.csv")
+
+ag_biomass_september24 <- 
+  read.csv(
+    "aboveground_biomass_september24.csv")
+
+root_biomass_june24 <- 
+  read.csv("root_biomass_june24.csv")
+
+bnpp_september24 <- 
+  read.csv(
+    "bnpp_september24.csv")
+```
+
+## 1.1 \| Explore the effect of precipitation treatment on ecosystem summer productivity
+
+### Total ecosystem productivity
+
+##### Clean and format data
+
+```{r make a df containing aboveground productivity, warning=FALSE, message=FALSE}
+#make a new df containing productivity in gm/2/day   
+ag_productivity_september24 <- 
+  
+  ag_biomass_september24 %>%
+
+ #Calculate the biomass per 1m^2 (rather than 0.25x1m strip)
+  mutate(
+    aboveground_biomass_gm2 = 
+      biomass_g * 4
+    ) %>% 
+  
+    #Calculate the aboveground biomass in gm2 per day over the 84 day period it was collected for
+  mutate(
+    ANPP_gm2day = 
+      aboveground_biomass_gm2/84
+    ) %>%
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right")) %>%
+  
+  #Remove all values with NA
+  na.omit() 
+```
+
+```{r make a df containing belowground productivity, warning=FALSE, message=FALSE}
+#make a new df containing scaled-up root biomass values for plots where it was only possible to take 1 ingrowth core  
+bnpp_scaled_september24 <- 
+  
+  bnpp_september24 %>%
+  
+  #Where the number of cores is 1, times the biomass_g column by 2 
+  mutate(
+    scaled_biomass_g = 
+      if_else(number_cores == 1, biomass_g * 2, biomass_g)) %>%
+  
+  #Calculate the biomass per 1m^2 (rather than for 2, 5cm diameter cores)
+  mutate(root_biomass_gm2 = (biomass_g/2) * (1 / (pi * (0.025^2)))) %>%
+  
+  #Calculate the belowground biomass in gm2 per day over the 80 day period it was collected for
+  mutate(BNPP_gm2day = root_biomass_gm2/80) %>%
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right")) %>%
+  
+  #Remove all values with NA
+  na.omit()
+```
+
+```{r make a df containing both aboveground and belowground productivities, warning=FALSE, message=FALSE}
+#Make a df containing root biomass and aboveground biomass and the ratios 
+ag_bg_productivity <- 
+  
+  #Join the aboveground and belowground productivity dataframes togather 
+  full_join(
+  ag_productivity_september24, 
+  bnpp_scaled_september24,
+  by = c("treatment", "block"))
+
+#Add a column for total productivity
+ag_bg_productivity <- ag_bg_productivity %>%
+  
+  #Group by treatment 
+  group_by(treatment) %>%
+  
+  #Add a total produvtivity column that contains the summed productvitity for aboveground and belowground 
+  mutate(total_productivity_gm2day = ANPP_gm2day + BNPP_gm2day)
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for ag_bg_productivity, warning=FALSE, message=FALSE}
+#Make a summary data frame containing mean total productivity in gm2day and 95% confidence intervals 
+summary_ag_bg_productivity <- 
+  
+  ag_bg_productivity %>%
+  
+  #Group data by treatment 
+  group_by(
+    treatment
+    ) %>%
+  
+  #Calculate mean root biomass, standard error and 95% confidence interval 
+  summarise(
+    mean_total_productivity_gm2day = mean(total_productivity_gm2day),
+    se = sd(total_productivity_gm2day) / sqrt(n()),  
+    ci = 1.96 * se) %>%
+  
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation")))
+```
+
+```{r print summary_ag_bg_productivity, message=FALSE, warning=FALSE}
+print(summary_ag_bg_productivity)
+```
+
+```{r calculate total mean productivity across all experimental quadrats, message=FALSE, warning=FALSE}
+mean(ag_bg_productivity$total_productivity_gm2day)
+std.error(ag_bg_productivity$total_productivity_gm2day)
+```
+
+##### Plot data
+
+```{r make total productivity plot, message=FALSE, warning=FALSE}
+#Make a total productivity  barchart with 95% confidence intervals 
+total_produtvitity_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_ag_bg_productivity, 
+           aes(x = treatment, 
+               y = mean_total_productivity_gm2day), 
+           fill = "#86B049", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_ag_bg_productivity, 
+                aes(x = treatment, 
+                    ymin = (mean_total_productivity_gm2day + ci),
+                    ymax = (mean_total_productivity_gm2day - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = ag_bg_productivity, 
+              aes(x = treatment, 
+                  y = total_productivity_gm2day), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(0, 4.5)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 11), 
+    axis.text.y = element_text(size = 11), 
+    axis.title.x = element_text(size = 14, margin = margin(t = 18)),
+    axis.title.y = element_text(size = 14, margin = margin(r = 15))  
+    ) +
+  
+  #Add axis labels 
+   labs(
+     x = "Treatment", 
+     y = expression("Total Summer Productivty (g m"^{-2}~"day"^{-1}*") (95% CI)"), 
+    title = "Total Summer Producvitity with 95% CI") 
+```
+
+```{r print total productivity plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(total_produtvitity_plot)
+```
+
+##### Create MEM
+
+```{r total productivity MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_tp (total productivity)
+#Response variable = Total productivity 
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_tp <- 
+  lmer(
+    total_productivity_gm2day
+    ~ treatment 
+    + (1|block), 
+    data=ag_bg_productivity
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r total productivity MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_tp))  
+qqline(resid(me_tp), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_tp)
+
+#Test random effect variance 
+ggplot(
+  ag_bg_productivity, 
+  aes(x = factor(block),
+      y = total_productivity_gm2day
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = expression("Total Summer Productivity in gm"^-2*"")) +
+  theme_minimal()
+```
+
+##### Alternative assumptions test
+
+```{r}
+#Check model assumptions 
+check_model(me_tp)
+
+#Plot a histogram of residuals 
+hist(residuals(me_tp))
+
+#Sumulate resuduals from the model using DHARMa
+residuals_me_tp <- simulateResiduals(me_tp)
+
+#QQ plot to check for a normal distribution of residuals 
+#Residual atocorelation plot 
+plot(residuals_me_tp)
+```
+
+##### MEM output
+
+```{r initial look at productivity MEM output, message=FALSE, warning=FALSE}
+plot_predictions(me_tp, by = "treatment", re.form = NA)
+```
+
+```{r total productivity MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_tp)
+confint(me_tp)
+```
+
+```{r total produtivity MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_tp)
+```
+
+```{r total productivity percentage change, message = FALSE, warning = FALSE}
+#Calculate percentage change and SE 
+deltaMethod(me_tp, "-100 * treatmentDrought / (Intercept)")
+```
+
+### Aboveground productivity
+
+##### Clean and format data
+
+```{r clean and  organise the ag_biomass_september24 df, message=FALSE, warning=FALSE}
+#make a new df containing productivity in gm/2/day   
+ag_productivity_september24 <- 
+  
+  ag_biomass_september24 %>%
+
+ #Calculate the biomass per 1m^2 (rather than 0.25x1m strip)
+  mutate(
+    aboveground_biomass_gm2 = 
+      biomass_g * 4
+    ) %>% 
+  
+    #Calculate the biomass in gm2 per day over the 84 day period it was collected for
+  mutate(
+    ANPP_gm2day = 
+      aboveground_biomass_gm2/84
+    ) %>%
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right")) %>%
+  
+  #Remove all values with NA
+  na.omit() 
+```
+
+##### Calculate summary statistics
+
+```{r ag productivity summary statistics, message=FALSE, warning=FALSE}
+#Make a summary data frame containing mean aboveground biomass in gm2 and 95% confidence intervals 
+summary_ag_productivity <- 
+  
+  ag_productivity_september24 %>%
+  
+  #Group data by treatment 
+  group_by(
+    treatment
+    ) %>%
+  
+  #Calculate mean root biomass, standard error and 95% confidence interval 
+  summarise(
+    mean_anpp_gm2day = mean(ANPP_gm2day),
+    se = sd(ANPP_gm2day) / sqrt(n()),  
+    ci = 1.96 * se) %>%
+  
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation")))
+```
+
+```{r print summary_ag_productivity, message=FALSE, warning=FALSE}
+print(summary_ag_productivity)
+```
+
+```{r calculate mean aboveground productivity across all experimental quadrats, message=FALSE, warning=FALSE}
+mean(ag_productivity_september24$ANPP_gm2day)
+std.error(ag_productivity_september24$ANPP_gm2day)
+```
+
+##### Plot data
+
+```{r make ag productivity plot, message=FALSE, warning=FALSE}
+#Make an aboveground productivity  barchart with 95% confidence intervals 
+ag_produtvitity_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_ag_productivity, 
+           aes(x = treatment, 
+               y = mean_anpp_gm2day), 
+           fill = "#86B049", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_ag_productivity, 
+                aes(x = treatment, 
+                    ymin = (mean_anpp_gm2day + ci),
+                    ymax = (mean_anpp_gm2day - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = ag_productivity_september24, 
+              aes(x = treatment, 
+                  y = ANPP_gm2day), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(-0.15, 3)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 11), 
+    axis.text.y = element_text(size = 11), 
+    axis.title.x = element_text(size = 14, margin = margin(t = 18)),
+    axis.title.y = element_text(size = 14, margin = margin(r = 15))  
+    ) +
+  
+  #Add axis labels 
+   labs(
+     x = "Treatment", 
+     y = expression("Aboveground Summer Productivty (g m"^{-2}~"day"^{-1}*") (95% CI)"), 
+    title = "Aboveground Summer Producvitity with 95% CI") 
+```
+
+```{r print ag productivity plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(ag_produtvitity_plot)
+```
+
+##### Create MEM
+
+```{r aboveground productivity MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_ap (aboveground productivity)
+#Response variable = Aboveground productivity 
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_ap <- 
+  lmer(
+    ANPP_gm2day
+    ~ treatment 
+    + (1|block), 
+    data=ag_productivity_september24
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r aboveground productivity MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_ap))  
+qqline(resid(me_ap), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_ap)
+
+#Test random effect variance 
+ggplot(
+  ag_productivity_september24, 
+  aes(x = factor(block),
+      y = ANPP_gm2day
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = expression("Aboveground Summer Productivity in gm"^-2*"")) +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at aboverground productivity MEM outputt, message=FALSE, warning=FALSE}
+plot_predictions(me_ap, by = "treatment", re.form = NA)
+```
+
+```{r aboverground productivity MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_ap)
+confint(me_ap)
+```
+
+```{r aboveground productivity estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_ap)
+```
+
+```{r aboveground productivity percentage change, message = FALSE, warning = FALSE}
+#Calculate percentage change and SE 
+deltaMethod(me_ap, "-100 * treatmentDrought / (Intercept)")
+```
+
+### Belowground/root productivity
+
+##### Clean and format data
+
+```{r clean and  organise the bnpp_september24 df, message=FALSE, warning=FALSE}
+#make a new df containing scaled-up root biomass values for plots where it was only possible to take 1 ingrowth core  
+bnpp_scaled_september24 <- 
+  
+  bnpp_september24 %>%
+  
+  #Where the number of cores is 1, times the biomass_g column by 2 
+  mutate(
+    scaled_biomass_g = 
+      if_else(number_cores == 1, biomass_g * 2, biomass_g)) %>%
+  
+  #Calculate the biomass per 1m^2 (rather than for 2, 5cm diameter cores)
+  mutate(root_biomass_gm2 = (biomass_g/2) * (1 / (pi * (0.025^2)))) %>%
+  
+  #Calculate the biomass in gm2 per day over the 80 day period it was collected for
+  mutate(BNPP_gm2day = root_biomass_gm2/80) %>%
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right")) %>%
+  
+  #Remove all values with NA
+  na.omit() 
+```
+
+##### Calculate summary statistics
+
+```{r bg productivity summary statistics, message=FALSE, warning=FALSE}
+#Make a summary data frame containing mean aboveground biomass in gm2 and 95% confidence intervals 
+summary_bg_productivity <- 
+  
+  bnpp_scaled_september24 %>%
+  
+  #Group data by treatment 
+  group_by(
+    treatment
+    ) %>%
+  
+  #Calculate mean root biomass, standard error and 95% confidence interval 
+  summarise(
+    mean_bnpp_gm2day = mean(BNPP_gm2day),
+    se = sd(BNPP_gm2day) / sqrt(n()),  
+    ci = 1.96 * se) %>%
+  
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation")))
+```
+
+```{r print bg productivity summary statistics table, message=FALSE, warning=FALSE}
+#look at summary statistics table
+print(summary_bg_productivity) 
+```
+
+```{r calculate mean belowgound productivity across all experimental quadrats, message=FALSE, warning=FALSE}
+mean(bnpp_scaled_september24$BNPP_gm2day)
+std.error(bnpp_scaled_september24$BNPP_gm2day)
+```
+
+##### Plot data
+
+```{r make belowground productivity plot, message=FALSE, warning=FALSE}
+#Make a belowground productivity barchart with 95% confidence intervals 
+bg_productivity_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_bg_productivity, 
+           aes(x = treatment, 
+               y = -mean_bnpp_gm2day), 
+           fill = "#8a6240", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_bg_productivity, 
+                aes(x = treatment, 
+                    ymin = -(mean_bnpp_gm2day + ci),
+                    ymax = -(mean_bnpp_gm2day - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = bnpp_scaled_september24, 
+              aes(x = treatment, 
+                  y = -BNPP_gm2day), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, 
+    limits = c(-3, 0)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    position = "top",
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 11), 
+    axis.text.y = element_text(size = 11), 
+    axis.title.x = element_text(size = 14, margin = margin(b = 15)),
+    axis.title.y = element_text(size = 14, margin = margin(r = 15))  
+    ) +
+  
+  #Add axis labels 
+   labs(
+     x = "Treatment", 
+     y = expression("Belowground Summer Productivty (g m"^{-2}~"day"^{-1}*") (95% CI)"), 
+    title = "Belowground Summer Producvitity with 95% CI") 
+```
+
+```{r print belowground productivity, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(bg_productivity_plot)
+```
+
+##### Create MEM
+
+```{r belowground productivity MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_bp (belowground productivity)
+#Response variable = Belowground productivity 
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_bp <- 
+  lmer(
+    BNPP_gm2day
+    ~ treatment 
+    + (1|block), 
+    data=bnpp_scaled_september24
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r bg productivity MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_bp))  
+qqline(resid(me_bp), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_bp)
+
+#Test random effect variance 
+ggplot(
+  bnpp_scaled_september24, 
+  aes(x = factor(block),
+      y = BNPP_gm2day
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = expression("Belowground Summer Productvity in gm"^-2*"")) +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at bg productivity MEM output, message=FALSE, warning=FALSE}
+plot_predictions(me_bp, by = "treatment", re.form = NA)
+```
+
+```{r bg productivity MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_bp)
+confint(me_bp)
+```
+
+```{r by productvitity MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_bp)
+```
+
+```{r belowground productivity percentage change, message = FALSE, warning = FALSE}
+#Calculate percentage change and SE 
+deltaMethod(me_bp, "-100 * treatmentDrought / (Intercept)")
+```
+
+------------------------------------------------------------------------
+
+## 1.2 \| Explore the effect of precipitation treatment on mid season aboveground to belowground biomass allocations
+
+### Aboveground mid season biomass
+
+##### Clean and format data
+
+```{r clean ag_biomass_june24, message=FALSE, warning=FALSE}
+#Format data 
+ag_biomass_totals_june24 <- 
+  
+  ag_biomass_june24 %>%
+  
+  #Group the data by treatment and block 
+  group_by(
+    treatment, 
+    block
+    ) %>%  
+  
+  #Sum the biomasses in each group to combine graminoid, forbe and legume biomass for each treatment and block to make a new column called aboveground_biomass_g
+  summarise(
+    aboveground_biomass_g = 
+      sum(biomass_g, na.rm = TRUE
+          )) %>% 
+  
+ #Calculate the biomass per 1m^2 (rather than 0.25x1m)
+  mutate(
+    aboveground_biomass_gm2 = 
+      aboveground_biomass_g * 4
+    ) %>% 
+  
+  #Ungroup the data 
+  ungroup() %>%
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right")) 
+```
+
+##### Calculate summary statistics
+
+```{r aboveground biomass summary statistics, message=FALSE, warning=FALSE}
+#Make a summary data frame containing mean aboveground biomass in gm2 and 95% confidence intervals 
+summary_ag_biomass <- 
+  
+  ag_biomass_totals_june24 %>%
+  
+  #Group data by treatment 
+  group_by(
+    treatment
+    ) %>%
+  
+  #Calculate mean root biomass, standard error and 95% confidence interval 
+  summarise(
+    mean_ag_biomass_gm2 = mean(aboveground_biomass_gm2),
+    se = sd(aboveground_biomass_gm2) / sqrt(n()),  
+    ci = 1.96 * se) %>%
+  
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation")))
+```
+
+```{r print ag biomass summary statistics table, message=FALSE, warning=FALSE}
+#look at summary statistics table
+print(summary_ag_biomass)
+```
+
+```{r calculate mean  midseason aboveground biomass across all experimental quadrats, message=FALSE, warning=FALSE}
+mean(ag_biomass_totals_june24$aboveground_biomass_gm2)
+std.error(ag_biomass_totals_june24$aboveground_biomass_gm2)
+```
+
+##### Plot data
+
+```{r make aboveground biomass plot, message=FALSE, warning=FALSE}
+#Make a root biomass barchart with 95% confidence intervals 
+ag_biomass_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_ag_biomass, 
+           aes(x = treatment, 
+               y = mean_ag_biomass_gm2), 
+           fill = "#86B049", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_ag_biomass, 
+                aes(x = treatment, 
+                    ymin = (mean_ag_biomass_gm2 + ci),
+                    ymax = (mean_ag_biomass_gm2 - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = ag_biomass_totals_june24, 
+              aes(x = treatment, 
+                  y = aboveground_biomass_gm2), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(0, 900)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 11), 
+    axis.text.y = element_text(size = 11), 
+    axis.title.x = element_text(size = 14, margin = margin(t = 18)),
+    axis.title.y = element_text(size = 14, margin = margin(r = 15))  
+    ) +
+  
+  #Add axis labels 
+   labs(
+     x = "Treatment", 
+     y = expression("Midseason Aboveground Biomass (gm"^-2*") (95% CI)"), 
+     title = expression("Midseason Aboveground Biomass in gm"^-2*" with 95% Confidence Intervals")
+     )
+```
+
+```{r print aboveground biomass plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(ag_biomass_plot)
+```
+
+##### Create MEM
+
+```{r midseason aboveground biomass MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_agb (root biomass)
+#Response variable = Mid season root biomass 
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_agb <- 
+  lmer(
+    aboveground_biomass_gm2 ~ treatment 
+    + (1|block), 
+    data=ag_biomass_totals_june24
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r midseason aboveground biomass MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_agb))  
+qqline(resid(me_agb), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_agb)
+
+#Test random effect variance 
+ggplot(
+  ag_biomass_totals_june24, 
+  aes(x = factor(block),
+      y = aboveground_biomass_gm2
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = expression("Midseason Aboveground Biomass in gm"^-2*"")) +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at midseason aboveground biomass MEM outpu, message=FALSE, warning=FALSE}
+plot_predictions(me_agb, by = "treatment", re.form = NA)
+```
+
+```{r midseason aboveground biomass MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_agb)
+confint(me_agb)
+```
+
+```{r midseason aboveground biomass estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_agb)
+```
+
+```{r aboveground miseason biomass percentage change, message = FALSE, warning = FALSE}
+#Calculate percentage change and SE 
+deltaMethod(me_agb, "-100 * treatmentDrought / (Intercept)")
+```
+
+### Belowground mid season biomass
+
+##### Clean and format data
+
+```{r clean root_biomass_june24, message=FALSE, warning=FALSE}
+#Add a column for root biomass in g/m^2
+root_biomass_june24_clean <- 
+  
+  root_biomass_june24 %>%
+  
+  #Calculate the biomass per 1m^2 (rather than for 3, 5cm diameter cores)
+  mutate(
+    root_biomass_gm2 = 
+      (root_biomass_g/3) * (1 / (pi * (0.025^2)))
+    )
+```
+
+```{r create df with total root biomass, message=FALSE, warning=FALSE}
+#Create a new dataframe that has a column for total root biomass for each treatment and plot (not split by depth)
+root_biomass_totals_june24 <- 
+  
+  root_biomass_june24_clean %>%
+  
+  #Group the data by block and treatment  
+  group_by(
+    block, treatment
+    ) %>%
+  
+  #Sum root biomass within each group (i.e sum both depths)
+  summarise(
+    total_root_biomass_g = 
+      sum(root_biomass_g, na.rm = TRUE)
+    ) %>% 
+  
+  #Calculate the biomass per 1m^2 (rather than for 3, 5cm diameter cores)
+  mutate(
+    root_biomass_gm2 = 
+      (total_root_biomass_g/3) * (1 / (pi * (0.025^2)))
+    ) %>% 
+  
+  #Ungroup the data 
+  ungroup() %>% 
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right")) 
+```
+
+##### Calculate summary statistics
+
+```{r root biomass summary statistics, message=FALSE, warning=FALSE}
+#Make a summary data frame containing mean root biomass in gm2 and 95% confidence intervals 
+summary_root_biomass <- 
+  
+  root_biomass_totals_june24 %>%
+  
+  #Group data by treatment 
+  group_by(
+    treatment
+    ) %>%
+  
+  #Calculate mean root biomass, standard error and 95% confidence interval 
+  summarise(
+    mean_root_biomass_gm2 = mean(root_biomass_gm2),
+    se = sd(root_biomass_gm2) / sqrt(n()),  
+    ci = 1.96 * se) %>%
+
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           fct_relevel(treatment, 
+                  "Drought", 
+                  "Ambient Control",
+                  "Procedural Control", 
+                  "Irrigation"))
+```
+
+```{r print root biomass summary statistics table, message=FALSE, warning=FALSE}
+#look at summary statistics table
+print(summary_root_biomass)
+```
+
+```{r calculate mean  midseason root biomass across all experimental quadrats, message=FALSE, warning=FALSE}
+mean(root_biomass_totals_june24$root_biomass_gm2)
+std.error(root_biomass_totals_june24$root_biomass_gm2)
+```
+
+##### Plot data
+
+```{r make root biomass plot, message=FALSE, warning=FALSE}
+#Make a root biomass barchart with 95% confidence intervals 
+root_biomass_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_root_biomass, 
+           aes(x = treatment, 
+               y = -mean_root_biomass_gm2), 
+           fill = "#8a6240", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_root_biomass, 
+                aes(x = treatment, 
+                    ymin = -(mean_root_biomass_gm2 + ci),
+                    ymax = -(mean_root_biomass_gm2 - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = root_biomass_totals_june24, 
+              aes(x = treatment, 
+                  y = -root_biomass_gm2), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(-900, 0)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    position = "top",
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 11), 
+    axis.text.y = element_text(size = 11), 
+    axis.title.x = element_text(size = 14, margin = margin(b = 15)),
+    axis.title.y = element_text(size = 14, margin = margin(r = 15))  
+    ) +
+  
+  #Add axis labels 
+   labs(
+     x = "Treatment", 
+     y = expression("Midseason Root Biomass (gm"^-2*") (95% CI)"), 
+     title = expression("Midseason Root Biomass in gm"^-2*" with 95% Confidence Intervals")
+     )
+```
+
+```{r print root biomass plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(root_biomass_plot)
+```
+
+##### Create MEM
+
+```{r root biomass MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_rb (root biomass)
+#Response variable = Mid season root biomass 
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_rb <- 
+  lmer(
+    root_biomass_gm2 ~ treatment 
+    + (1|block), 
+    data=root_biomass_totals_june24
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r midseason root biomass MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_rb))  
+qqline(resid(me_rb), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_rb)
+
+#Test random effect variance 
+ggplot(
+  root_biomass_totals_june24, 
+  aes(x = factor(block),
+      y = root_biomass_gm2
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = expression("Midseason Root Biomass in gm"^-2*"")) +
+  theme_minimal()
+```
+
+##### MEM outputs
+
+```{r initial look at midseason root biomass MEM output, message=FALSE, warning=FALSE}
+plot_predictions(me_rb, by = "treatment", re.form = NA)
+```
+
+```{r mid season root biomass MEM, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_rb)
+confint(me_rb)
+```
+
+```{r midseason root biomass MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_rb)
+```
+
+```{r  miseason root biomass percentage change, message = FALSE, warning = FALSE}
+#Calculate percentage change and SE 
+deltaMethod(me_rb, "-100 * treatmentDrought / (Intercept)")
+```
+
+------------------------------------------------------------------------
+
+## Aboveground/Belowground Biomass Productivity Synthesis Figure
+
+```{r aboveground biomass synthesis plot, message=FALSE, warning=FALSE}
+#Make an aboveground biomass barchart with 95% confidence intervals 
+ag_biomass_synthesis_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_ag_biomass, 
+           aes(x = treatment, 
+               y = mean_ag_biomass_gm2), 
+           fill = "#86B049", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_ag_biomass, 
+                aes(x = treatment, 
+                    ymin = (mean_ag_biomass_gm2 + ci),
+                    ymax = (mean_ag_biomass_gm2 - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = ag_biomass_totals_june24, 
+              aes(x = treatment, 
+                  y = aboveground_biomass_gm2), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(0, 900)
+    ) + 
+  
+  #Set the theme
+  #Remove gridlines 
+  #Remove x axis labels 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_blank(),
+    text = element_text(family = "Times New Roman"),
+     axis.title.y = element_text(size = 14, face = "bold", margin = margin(r = 10))
+    ) +
+  
+  #Add axis labels
+  labs(
+    x=NULL, 
+    y = expression(atop("Aboveground Biomass", "(g m"^-2*") (95% CI)")))
+```
+
+```{r belowground biomass synthesis plot, message=FALSE, warning=FALSE}
+#Make a root biomass barchart with 95% confidence intervals 
+bg_biomass_synthesis_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_root_biomass, 
+           aes(x = treatment, 
+               y = -mean_root_biomass_gm2), 
+           fill = "#8a6240", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_root_biomass, 
+                aes(x = treatment, 
+                    ymin = -(mean_root_biomass_gm2 + ci),
+                    ymax = -(mean_root_biomass_gm2 - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = root_biomass_totals_june24, 
+              aes(x = treatment, 
+                  y = -root_biomass_gm2), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(-900, 0)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    position = "top",
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(colour="black", size=10),
+    text = element_text(family = "Times New Roman"),
+     axis.title.y = element_text(size = 14, face = "bold", margin = margin(r = 10))
+    ) +
+  
+  #Add axis labels 
+  labs(
+    x = NULL, 
+    y = expression(atop("Root Biomass", "(g m"^-2*") (95% CI)")))
+```
+
+```{r aboveground productivity synthesis plot, message=FALSE, warning=FALSE}
+#Make an aboveground productivity  barchart with 95% confidence intervals 
+ag_produtvitity_synthesis_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_ag_productivity, 
+           aes(x = treatment, 
+               y = mean_anpp_gm2day), 
+           fill = "#86B049", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_ag_productivity, 
+                aes(x = treatment, 
+                    ymin = (mean_anpp_gm2day + ci),
+                    ymax = (mean_anpp_gm2day - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = ag_productivity_september24, 
+              aes(x = treatment, 
+                  y = ANPP_gm2day), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, limits = c(-0.15, 3)
+    ) + 
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_blank(),
+    text = element_text(family = "Times New Roman"),
+     axis.title.y = element_text(size = 14, face = "bold", margin = margin(r = 10))
+    ) +
+  
+  #Add axis labels
+  labs(
+    x = NULL, 
+    y = expression(atop("Aboveground productivity", "(g m"^{-2}~"day"^{-1}*") (95% CI)")))
+```
+
+```{r belowground productivity synthesis plot, message=FALSE, warning=FALSE}
+#Make a belowground productivity barchart with 95% confidence intervals 
+bg_productivity_synthesis_plot <- 
+  
+  #Create the plot
+  ggplot() +
+  
+  #Add bars using data from the summary statistics table
+  #Y axis values are negative so that bars grow downwards 
+  geom_col(data = summary_bg_productivity, 
+           aes(x = treatment, 
+               y = -mean_bnpp_gm2day), 
+           fill = "#8a6240", width = 0.6) +  
+   
+  #Add error bars for confidence intervals
+  #Mean values are flipped to be negative to match the bars 
+  geom_errorbar(data = summary_bg_productivity, 
+                aes(x = treatment, 
+                    ymin = -(mean_bnpp_gm2day + ci),
+                    ymax = -(mean_bnpp_gm2day - ci)), 
+                width = 0.2, 
+                size = 0.8) +
+  
+  #Add raw data points (jittered for visibility)
+  geom_jitter(data = bnpp_scaled_september24, 
+              aes(x = treatment, 
+                  y = -BNPP_gm2day), 
+              width = 0.1, 
+              alpha = 0.5, 
+              color = "black", 
+              size = 2) +
+
+  #Make y-axis labels positive 
+  #Set appropriate limits 
+  scale_y_continuous(
+    labels = abs, 
+    limits = c(-3, 0)
+    ) + 
+  
+  #Move the x-axis to the top 
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    position = "top",
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)", 
+               "Irrigation" = "Irrigation\n(150%)"
+    )) +
+  
+  #Set the theme
+  #Remove gridlines 
+  #Adjust axis label font sizes 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(colour="black", size=10),
+    text = element_text(family = "Times New Roman"),
+     axis.title.y = element_text(size = 14, face = "bold", margin = margin(r = 10))
+  ) +
+  
+  #Add axis labels 
+  labs(
+    x = NULL, 
+    y = expression(atop("Belowground productivity", "(g m"^{-2}~"day"^{-1}*") (95% CI)")))
+
+```
+
+```{r join ag, bg productivity and biomass plots togather, message=FALSE, warning=FALSE, fig.width=12, fig.height=6}
+#Join the two midseason biomass plots togather 
+biomass_plot <- 
+  grid.arrange(
+    ag_biomass_synthesis_plot, 
+    bg_biomass_synthesis_plot, 
+    nrow = 2)
+
+#Join the two productivity plots togather 
+productivity_plot <- 
+  grid.arrange(
+    ag_produtvitity_synthesis_plot, 
+    bg_productivity_synthesis_plot, 
+    nrow = 2)
+
+#Create an empty plot to add a space between the graphs 
+empty_plot <- 
+  ggplot() + 
+  theme_void()
+
+#Join the midseason biomass and productivity plots togather 
+ag_bg_biomass_productivity_synthesis_plot <- 
+  grid.arrange(
+    productivity_plot, 
+    empty_plot, 
+    biomass_plot, 
+    ncol = 3, 
+    widths = c(1, 0.15, 1))
+```
+
+------------------------------------------------------------------------
+
+## 1.3 \| Explore the effect of precipitation treatment on root depth allocations
+
+##### Clean and format data
+
+```{r remove any blank spaces from treatment column, message=FALSE, warning=FALSE}
+root_biomass_june24_clean <-
+  
+  root_biomass_june24_clean %>%
+  
+  #Remove blank spaces in the treatments column 
+  mutate(treatment = str_trim(treatment, side = "right"))
+```
+
+```{r organise root_biomass_june24 data, message=FALSE, warning=FALSE}
+#make a df containing the shallow:deep root biomass ratio
+root_biomass_depth_june24 <- 
+  
+  root_biomass_june24_clean %>%
+  
+  #Select just the columns I want to consider 
+  dplyr::select(block, 
+         treatment, 
+         depth_mm, 
+         root_biomass_gm2
+         ) %>%
+  
+  #Convert depth levels to columns
+  spread(
+    key = depth_mm, 
+    value = root_biomass_gm2
+    ) %>% 
+  
+    # Calculate the shallow to deep ratio
+  mutate(ratio_shallow_deep = 
+           `0-50` / `50-100`) %>%
+
+  # Keep only relevant columns
+  dplyr::select(block, treatment, ratio_shallow_deep)  
+```
+
+##### Calculate summary statistics
+
+```{r root depth summary statistics, message=FALSE, warning=FALSE}
+#Create a summary data frame with means and confidence intervals for each depth category
+summary_root_biomass_depths <- 
+  
+  root_biomass_june24_clean %>%
+  
+  #Group by treatment and depth 
+  group_by(treatment, depth_mm) %>%
+  
+  #Calculate mean biomass, CI and SE for each depth and treatment 
+  summarise(
+    mean_root_biomass_gm2 = 
+      mean(root_biomass_gm2),
+    se = 
+      sd(root_biomass_gm2) / sqrt(n()), 
+    ci = 
+      1.96 * se
+  ) %>% 
+  
+  #Ungroup the columns 
+  ungroup() 
+```
+
+```{r print summary_root_biomass_depths, message=FALSE, warning=FALSE}
+#look at summary statistics table
+print(summary_root_biomass_depths) 
+```
+
+##### Create dataframes structured for the figure
+
+```{r error bars for 0_50mm root depth, message=FALSE, warning=FALSE}
+#Create a df containing data for the error bars for 0_50mm depth 
+root_biomass_gm2_error_bars_0_50 <- 
+  
+  #Use the summary data frame
+  summary_root_biomass_depths %>%
+  
+  #Group by treatment 
+  group_by(treatment) %>%
+  
+  #Calculate the means and confidence intervals for just 50_100 depth
+  #Total mean is mean for both depths summed (to allow for the stacked bar chart)
+  summarise(
+    mean_root_biomass_gm2_0_50 = 
+      mean_root_biomass_gm2[depth_mm == "0-50"],
+    ci_0_50 = 
+      ci[depth_mm == "0-50"]
+  )
+```
+
+```{r error bars for 50_100mm root depth, message=FALSE, warning=FALSE}
+#Create a df containing data for the error bars for 50_100mm depth 
+root_biomass_gm2_error_bars_50_100 <- 
+  
+  #Use the summary data frame
+  summary_root_biomass_depths %>%
+  
+  #Group by treatment 
+  group_by(treatment) %>%
+  
+  #Calculate the means and confidence intervals for just 50_100 depth
+  #Total mean is mean for both depths summed (to allow for the stacked bar chart)
+  summarise(
+    total_mean_root_biomass_gm2 = 
+      sum(mean_root_biomass_gm2),
+    ci_50_100 = 
+      ci[depth_mm == "50-100"]
+  )
+```
+
+```{r join the error bar dfs for both depths togather, message=FALSE, warning=FALSE}
+#Join the error bar dataframes for both depths togather
+#Add a column containing the offset so they do not overlap on the plot 
+summary_root_biomass_depths_with_ci <- 
+  
+  #Use the summary_root_biomass_depths df 
+  summary_root_biomass_depths %>%
+  
+  #Add the error bars data frames
+  left_join(root_biomass_gm2_error_bars_0_50, by = "treatment") %>% 
+  left_join(root_biomass_gm2_error_bars_50_100, by = "treatment") %>% 
+  
+  #Add an offset column based on the depth category 
+  mutate(offset = ifelse(depth_mm == "0-50", -0.17, 0.17), 
+         treatment_position = as.numeric(factor(treatment))) %>%
+
+  #Reorder the levels in order of acending precipitation 
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = 
+                    c("Drought", 
+                      "Ambient Control",
+                      "Procedural Control", 
+                      "Irrigation")))  %>%
+  
+  #Reorder the levels in order of decending depth
+  mutate(depth_mm = factor(depth_mm, levels = c("50-100", "0-50")))
+```
+
+```{r raw data points for 0-50mm depth, message=FALSE, warning=FALSE}
+#Get raw data points for 0-50mm depth 
+root_biomass_gm2_0_50 <- 
+  
+  root_biomass_june24_clean %>%
+  
+  #Select only the rows where depth is 0-50mm
+  filter(depth_mm == "0-50") 
+```
+
+```{r raw data points for 50-100mm depth, message=FALSE, warning=FALSE}
+#Get raw data points for 0-50mm depth and add a column containing root biomass for 50_100 summed with mean biomass for 0_50
+
+root_biomass_gm2_50_100 <- 
+  
+  root_biomass_june24_clean %>%
+  
+  #Join the summary data frame containing means and CI for error bars
+  left_join(summary_root_biomass_depths_with_ci, 
+            by = c("treatment", 
+                   "depth_mm"
+                   )) %>%
+
+  #Select only the rows where depth is 50-100mm
+  filter(
+    depth_mm == "50-100"
+    ) %>%
+  
+  #Add a column containing root biomass for 50_100 summed with mean biomass for 0_50
+  mutate(
+    adjusted_root_biomass_gm2_50_100 = 
+           mean_root_biomass_gm2_0_50 + 
+           root_biomass_gm2
+    ) 
+```
+
+```{r join the raw data dfs for both depths togather, message=FALSE, warning=FALSE}
+#Join the raw data data grames togather and add an offset column so that data points do not overlap on the plots 
+raw_data_root_biomass_gm2 <- 
+  
+  root_biomass_june24_clean %>%
+
+  left_join(
+    root_biomass_gm2_50_100, 
+    by = c("treatment", 
+           "block", 
+           "root_biomass_gm2", 
+           "depth_mm"
+           )) %>%
+  
+  #Add an offset column based on the depth category 
+  mutate(offset = ifelse(depth_mm == "0-50", -0.17, 0.17), 
+         treatment_position = as.numeric(factor(treatment))) %>%
+  
+  #Reorder the levels in order of acending precipitation 
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = 
+                    c("Drought", 
+                      "Ambient Control",
+                      "Procedural Control", 
+                      "Irrigation"))) %>%
+  
+  #Reorder the levels in order of decending depth
+  mutate(depth_mm = factor(depth_mm, levels = c("50-100", "0-50")))
+```
+
+##### Plot data
+
+```{r make the root depth allocation plot, message=FALSE, warning=FALSE}
+#Plot a figure with stacked bars for root biomass at the two depth categories. Include data points and error bars. 
+root_depth_plot <- 
+  
+  #Make the plot 
+  ggplot(
+    summary_root_biomass_depths_with_ci,
+    aes(x=treatment, 
+        y=-mean_root_biomass_gm2, 
+        fill=depth_mm
+        )) +
+  
+  #Add the bars based on the depth 
+  geom_bar(stat="identity", width=0.7) + 
+  
+  #Add errorbars for the 0_50 depth category 
+   geom_errorbar(
+      data = 
+        summary_root_biomass_depths_with_ci %>% 
+        filter(depth_mm == "0-50"),
+      aes(
+        x=
+          as.numeric(treatment) + offset,
+        ymin = 
+          -(mean_root_biomass_gm2_0_50 + ci_0_50), 
+        ymax = -(mean_root_biomass_gm2_0_50 - ci_0_50)),
+      width = 0.2, 
+      size = 0.8) +
+  
+  #Add error bars for the 50_100 depth category 
+  geom_errorbar(
+      data = 
+        summary_root_biomass_depths_with_ci %>% 
+        filter(depth_mm == "50-100"),
+      aes(x=as.numeric(treatment) + 
+            offset,
+          ymin = 
+            -(total_mean_root_biomass_gm2 + ci_50_100), 
+          ymax = 
+            -(total_mean_root_biomass_gm2 - ci_50_100)), 
+      width = 0.2, 
+      size = 0.8) +
+  
+  #Add data points for the 0-50mm depth category 
+  geom_jitter(
+    data=
+      raw_data_root_biomass_gm2 %>% 
+      filter(depth_mm =="0-50"),
+    aes(x=
+          as.numeric(factor(treatment)) - 
+          0.2,
+        y=
+          -root_biomass_gm2),
+    width=0.1,
+    alpha=0.5,
+    size=2) + 
+  
+ #Add data points for the 50-100mm depth category
+ geom_jitter(
+   data=
+     raw_data_root_biomass_gm2, 
+   aes(x=
+         as.numeric(factor(treatment)) + 
+         0.2,
+       y=
+         -adjusted_root_biomass_gm2_50_100), 
+   width=0.1,
+   alpha=0.5,
+   size=2) + 
+  
+  #Set limits to the y axis 
+  scale_y_continuous(labels = abs, limits = c(-820, 0)) +
+  
+  #Change the lables on the x axis and move it to the top 
+  scale_x_discrete(
+    position = "top",
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl (100%)", 
+               "Procedural Control" = "Procedural\nControl (100%)",
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+  #Change the colours of the bars 
+scale_fill_manual(
+  values = c("0-50" = "sienna3", "50-100" = "sienna4"),
+  name = "Root Depth (cm)",
+  breaks = c("0-50", "50-100"),
+  labels = c("0-5", "5-10")
+) +
+  
+  #Change the colour of the points 
+  scale_color_manual(
+    values = 
+      c("0-50" = "black", 
+        "50-100" = "black")) +
+  
+  #Set a theme 
+  theme_bw(base_family = "Times New Roman") +
+  
+  #Remove the gridlines and adjust axis text label size
+  theme(
+    panel.grid = 
+      element_blank(),
+    axis.text.x = 
+      element_text(family = "Times New Roman",
+        size = 10, 
+        margin = margin(t = 25)), 
+    axis.text.y = 
+      element_text(family = "Times New Roman",
+        size = 10), 
+    axis.title.x = 
+      element_text(family = "Times New Roman",
+        size = 14, 
+        margin = margin(b = 40)),  
+    axis.title.y = 
+      element_text(family = "Times New Roman",
+        size = 14, 
+        margin = margin(r = 10)),
+    legend.position = "bottom",
+    legend.text = element_text(family = "Times New Roman"),
+    legend.title = element_text(family = "Times New Roman")) +
+  
+  #Rename the axis labels
+  labs(x = "Treatment", y = expression("Root Biomass (g m"^-2*") (95% CI)"))
+```
+
+```{r print root depth allocation plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(root_depth_plot)
+```
+
+##### Create MEM
+
+```{r root depth allocation MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_rda (root depth allocation)
+#Response variable = shallow:deep root ratio 
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_rda <- 
+  lmer(
+    ratio_shallow_deep
+ ~ treatment 
+    + (1|block), 
+    data=root_biomass_depth_june24
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r root depth allocation MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_rda))  
+qqline(resid(me_rda), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_rda)
+
+#Test random effect variance 
+ggplot(
+  root_biomass_depth_june24, 
+  aes(x = factor(block),
+      y = ratio_shallow_deep
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Shallow:Deep root ratio") +
+  theme_minimal()
+```
+
+##### MEM outputs
+
+```{r initial look at rood depth allocation MEM output, message=FALSE, warning=FALSE}
+plot_predictions(me_rda, by = "treatment", re.form = NA)
+```
+
+```{r root depth allocation MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_rda)
+```
+
+```{r root depth allocation MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_rda)
+```

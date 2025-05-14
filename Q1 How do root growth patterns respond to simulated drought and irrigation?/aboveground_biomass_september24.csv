@@ -1,0 +1,21 @@
+year,collection,block,treatment ,biomass_g
+2024,End,A,Ambient Control,13.4
+2024,End,A,Procedural Control,23
+2024,End,A,Irrigation,14
+2024,End,A,Drought,1.6
+2024,End,B,Ambient Control,23.4
+2024,End,B,Procedural Control,38.3
+2024,End,B,Irrigation,11.4
+2024,End,B,Drought,2.2
+2024,End,C,Ambient Control,16.1
+2024,End,C,Procedural Control,33.8
+2024,End,C,Irrigation,19.8
+2024,End,C,Drought,1.6
+2024,End,D,Ambient Control,11.3
+2024,End,D,Procedural Control,14.5
+2024,End,D,Irrigation,24.1
+2024,End,D,Drought,4
+2024,End,E,Ambient Control,1.6
+2024,End,E,Procedural Control,17.4
+2024,End,E,Irrigation,22.6
+2024,End,E,Drought,26

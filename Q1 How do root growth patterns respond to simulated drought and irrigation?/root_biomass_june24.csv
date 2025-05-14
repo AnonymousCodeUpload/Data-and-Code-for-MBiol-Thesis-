@@ -1,0 +1,41 @@
+block,treatment,depth_mm,date_collected,root_biomass_g
+A,Drought,0-50,28/06/2024,2.9
+A,Drought,50-100,28/06/2024,0.7
+A,Irrigation ,0-50,28/06/2024,2.4
+A,Irrigation ,50-100,28/06/2024,0.9
+A,Procedural Control,0-50,28/06/2024,2.6
+A,Procedural Control,50-100,28/06/2024,0.6
+A,Ambient Control ,0-50,28/06/2024,2.8
+A,Ambient Control ,50-100,28/06/2024,1
+B,Drought,0-50,28/06/2024,3.4
+B,Drought,50-100,28/06/2024,1.1
+B,Irrigation ,0-50,28/06/2024,2.8
+B,Irrigation ,50-100,28/06/2024,0.9
+B,Procedural Control,0-50,28/06/2024,3.1
+B,Procedural Control,50-100,28/06/2024,0.7
+B,Ambient Control ,0-50,28/06/2024,4.1
+B,Ambient Control ,50-100,28/06/2024,1
+C,Drought,0-50,28/06/2024,3.3
+C,Drought,50-100,28/06/2024,0.6
+C,Irrigation ,0-50,28/06/2024,4.7
+C,Irrigation ,50-100,28/06/2024,0.9
+C,Procedural Control,0-50,28/06/2024,2.9
+C,Procedural Control,50-100,28/06/2024,0.7
+C,Ambient Control ,0-50,28/06/2024,3
+C,Ambient Control ,50-100,28/06/2024,1
+D,Drought,0-50,03/07/2024,2.8
+D,Drought,50-100,03/07/2024,0.9
+D,Irrigation ,0-50,03/07/2024,2.7
+D,Irrigation ,50-100,03/07/2024,0.5
+D,Procedural Control,0-50,03/07/2024,3.7
+D,Procedural Control,50-100,03/07/2024,1.4
+D,Ambient Control ,0-50,03/07/2024,4
+D,Ambient Control ,50-100,03/07/2024,1
+E,Drought,0-50,09/07/2024,2.7
+E,Drought,50-100,09/07/2024,0.5
+E,Irrigation ,0-50,09/07/2024,3
+E,Irrigation ,50-100,09/07/2024,1.3
+E,Procedural Control,0-50,09/07/2024,3.4
+E,Procedural Control,50-100,09/07/2024,0.9
+E,Ambient Control ,0-50,09/07/2024,4.7
+E,Ambient Control ,50-100,09/07/2024,0.7

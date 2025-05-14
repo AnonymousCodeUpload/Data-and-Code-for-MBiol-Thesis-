@@ -1,0 +1,61 @@
+year,collection,block,treatment,functional_group,biomass_g
+2024,Mid,A,Ambient Control,Graminoids,56.4
+2024,Mid,A,Ambient Control,Forbs,5.5
+2024,Mid,A,Ambient Control,Legumes,13.2
+2024,Mid,A,Procedural Control,Graminoids,113.4
+2024,Mid,A,Procedural Control,Forbs,5.4
+2024,Mid,A,Procedural Control,Legumes,18.8
+2024,Mid,A,Irrigation,Graminoids,44.8
+2024,Mid,A,Irrigation,Forbs,5.8
+2024,Mid,A,Irrigation,Legumes,3.4
+2024,Mid,A,Drought,Graminoids,38.5
+2024,Mid,A,Drought,Forbs,11.5
+2024,Mid,A,Drought,Legumes,21.2
+2024,Mid,B,Ambient Control,Graminoids,72.1
+2024,Mid,B,Ambient Control,Forbs,13.2
+2024,Mid,B,Ambient Control,Legumes,18.6
+2024,Mid,B,Procedural Control,Graminoids,98.5
+2024,Mid,B,Procedural Control,Forbs,2.2
+2024,Mid,B,Procedural Control,Legumes,19.4
+2024,Mid,B,Irrigation,Graminoids,100.7
+2024,Mid,B,Irrigation,Forbs,5.7
+2024,Mid,B,Irrigation,Legumes,1.5
+2024,Mid,B,Drought,Graminoids,74.1
+2024,Mid,B,Drought,Forbs,0.8
+2024,Mid,B,Drought,Legumes,5.6
+2024,Mid,C,Ambient Control,Graminoids,41.2
+2024,Mid,C,Ambient Control,Forbs,4.2
+2024,Mid,C,Ambient Control,Legumes,4.6
+2024,Mid,C,Procedural Control,Graminoids,54.6
+2024,Mid,C,Procedural Control,Forbs,3.9
+2024,Mid,C,Procedural Control,Legumes,2.8
+2024,Mid,C,Irrigation,Graminoids,102.6
+2024,Mid,C,Irrigation,Forbs,9.1
+2024,Mid,C,Irrigation,Legumes,3.1
+2024,Mid,C,Drought,Graminoids,50.4
+2024,Mid,C,Drought,Forbs,8.4
+2024,Mid,C,Drought,Legumes,7.1
+2024,Mid,D,Ambient Control,Graminoids,48.4
+2024,Mid,D,Ambient Control,Forbs,6.3
+2024,Mid,D,Ambient Control,Legumes,2.9
+2024,Mid,D,Procedural Control,Graminoids,59
+2024,Mid,D,Procedural Control,Forbs,3.5
+2024,Mid,D,Procedural Control,Legumes,9
+2024,Mid,D,Irrigation,Graminoids,96.4
+2024,Mid,D,Irrigation,Forbs,10
+2024,Mid,D,Irrigation,Legumes,5
+2024,Mid,D,Drought,Graminoids,101.8
+2024,Mid,D,Drought,Forbs,7.1
+2024,Mid,D,Drought,Legumes,2.8
+2024,Mid,E,Ambient Control,Graminoids,93.3
+2024,Mid,E,Ambient Control,Forbs,3.2
+2024,Mid,E,Ambient Control,Legumes,10.1
+2024,Mid,E,Procedural Control,Graminoids,59.1
+2024,Mid,E,Procedural Control,Forbs,12.2
+2024,Mid,E,Procedural Control,Legumes,12.8
+2024,Mid,E,Irrigation,Graminoids,50.4
+2024,Mid,E,Irrigation,Forbs,9.2
+2024,Mid,E,Irrigation,Legumes,13
+2024,Mid,E,Drought,Graminoids,65
+2024,Mid,E,Drought,Forbs,4.9
+2024,Mid,E,Drought,Legumes,9.1

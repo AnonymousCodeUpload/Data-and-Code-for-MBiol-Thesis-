@@ -1,0 +1,21 @@
+block,treatment,number_cores,quality,biomass_g
+A,Drought,1,pb,0.11
+A,Irrigation,2,"x,x",0.641
+A,Procedural Control,2,"x,x",0.783
+A,Ambient Control ,2,"x,x",0.691
+B,Drought,2,"x,x",0.188
+B,Irrigation,2,"x,x",0.502
+B,Procedural Control,2,"x,x",0.721
+B,Ambient Control ,2,"x,x",0.88
+C,Drought,2,"pb,x",0.207
+C,Irrigation,2,"b,x",0.633
+C,Procedural Control,2,"b,x",0.481
+C,Ambient Control ,2,"x,x",0.352
+D,Drought,2,"pb,pb",0.315
+D,Irrigation,2,"x,x",0.709
+D,Procedural Control,1,pb,0.246
+D,Ambient Control ,2,"pb,pb",0.416
+E,Drought,2,"x,b",0.429
+E,Irrigation,2,"pb,x",0.507
+E,Procedural Control,2,"b,x",0.561
+E,Ambient Control ,2,"pb,x",0.456
