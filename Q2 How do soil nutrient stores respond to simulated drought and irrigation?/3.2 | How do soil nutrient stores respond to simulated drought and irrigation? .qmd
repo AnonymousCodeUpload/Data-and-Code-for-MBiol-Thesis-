@@ -1,0 +1,1491 @@
+---
+title: "3.2 How do soil nutrient stores respond to simulated drought and irrigation"
+format: docx
+editor: visual
+---
+
+# **2 \| How do soil nutrient stores respond to simulated drought and irrigation?**
+
+```{r load packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)  
+library(dplyr)
+library(report)
+library(lme4)
+library(ggeffects)
+library(effects)
+library(easystats)
+library(marginaleffects)
+library(gridExtra)
+library(knitr)
+library(forcats)
+library(DHARMa)
+library(plotrix) 
+library(grid) 
+library(coefplot)
+library(car)
+```
+
+```{r load data, echo=FALSE, message=FALSE, warning=FALSE}
+cns_september24 <- 
+  read.csv(
+    "cns_september24.csv"
+  )
+
+loi_september24 <- 
+  read.csv(
+    "loss_of_ignition_september24.csv"
+    )
+
+ic_september24 <- 
+  read.csv(
+    "ion_chromatography_september24.csv"
+    )
+```
+
+## 2.1 \| Explore the effect of precipitation treatment on ecosystem soil nutrient stores
+
+##### Clean and format data
+
+```{r clean cns_september24, message=FALSE, warning=FALSE}
+#Rename the soil nutrient columns and convert the dataframe into a long format, with carbon, nitrogen and sulpher all in one column called element and another called soil_percent
+cns_cleaned <- 
+  
+  cns_september24 %>%
+  
+  #Rename columns 
+  rename(
+    Carbon = X._Carbon, 
+    Nitrogen = X._Nitrogen, 
+    Sulphur = X._Sulphur
+  ) %>%
+  
+  #Convert into long format 
+  pivot_longer(
+    cols = c(
+      Carbon, 
+      Nitrogen, 
+      Sulphur
+    ), 
+    names_to = 
+      "Element", 
+    values_to = 
+      "soil_percentage"
+  )
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for cns_cleaned, message=FALSE, warning=FALSE}
+summary_cns <- 
+  
+  cns_cleaned %>%
+  
+  #Group by treatment and element  
+  group_by(
+    Treatment, 
+    Element
+  ) %>%
+  
+  #Calculate summary statistics 
+  summarise( 
+    mean =
+      mean(soil_percentage, na.rm=TRUE),
+      se = sd(soil_percentage) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  
+  #Ungroup data 
+  ungroup() %>%
+ 
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(Treatment = 
+           factor(Treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation")))
+
+#Add a column called Facet, continging the element (for graphing purposes) 
+summary_cns$Facet <- summary_cns$Element
+```
+
+```{r print summary_cns, message=FALSE, warning=FALSE}
+#look at summary statistics table
+print(summary_cns) 
+```
+
+### Soil Carbon
+
+##### Plot data
+
+```{r make a soil carbon plot, message = FALSE, warning = FALSE}
+#Make a soil carbon plot
+soil_carbon_plot <-
+  
+  #Make the plot
+  ggplot(
+  (summary_cns %>% filter(Element == "Carbon")), 
+       aes(
+         x = Treatment, 
+         y = mean)) +
+    
+  #Add data points for the soil carbon percentage 
+  geom_point(
+    data = (summary_cns %>% filter(Element == "Carbon")), 
+    aes(x = Treatment, 
+        y = mean,
+        color = Treatment), 
+    size = 2, 
+    ) +
+  
+  #Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = Treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+  # Manually set colors to represent aridity scale
+  scale_colour_manual(
+   values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",    
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"         
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Carbon (%)"
+  ) +
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7, family = "Times New Roman"), 
+    axis.text.y = element_text(size = 7, family = "Times New Roman"), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10), family = "Times New Roman"),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+  #Add a bar at the top that reads Cabon  
+  facet_wrap(~Facet) 
+```
+
+```{r print soil carbon plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(soil_carbon_plot)
+```
+
+##### Create MEM
+
+```{r soil carbon MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_sc (soil carbon)
+#Response variable = Carbon  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_sc <- 
+  lmer(
+   soil_percentage
+    ~ Treatment 
+    + (1|Block), 
+    data = 
+      cns_cleaned %>% 
+      filter(Element == "Carbon")
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r soil carbon MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_sc))  
+qqline(resid(me_sc), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_sc)
+
+#Test random effect variance 
+ggplot(
+  cns_cleaned %>% filter(Element == "Carbon"), 
+  aes(x = factor(Block),
+      y = soil_percentage
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Carbon Percentage") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil carbon output, message=FALSE, warning=FALSE}
+plot_predictions(me_sc, by = "Treatment", re.form = NA)
+coefplot::coefplot(me_sc)
+```
+
+```{r soil carbon MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_sc)
+confint(me_sc)
+```
+
+```{r soil carbon MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_sc)
+```
+
+### Soil Nitrogen
+
+##### Plot data
+
+```{r make a soil nitrogen plot, message = FALSE, warning = FALSE}
+#Make a soil nitrogen plot
+soil_nitrogen_plot <-
+  
+  #Make the plot
+  ggplot(
+  (summary_cns %>% filter(Element == "Nitrogen")), 
+       aes(
+         x = Treatment, 
+         y = mean)) +
+    
+  #Add data points for the soil nitrogen percentage 
+  geom_point(
+    data = (summary_cns %>% filter(Element == "Nitrogen")), 
+    aes(x = Treatment, 
+        y = mean,
+        color = Treatment), 
+    size = 2, 
+    ) +
+  
+  #Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = Treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+  # Manually set colors to represent aridity scale
+  scale_colour_manual(
+   values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",    
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"         
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Nitrogen (%)"
+  ) +
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7, family = "Times New Roman"), 
+    axis.text.y = element_text(size = 7, family = "Times New Roman"), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10), family = "Times New Roman"),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+  #Add a bar at the top that reads Nitrogen  
+  facet_wrap(~Facet) 
+```
+
+```{r print soil nitrogen plot, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+print(soil_nitrogen_plot)
+```
+
+##### Create MEM
+
+```{r soil nitrogen MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_sc (soil nitrogen)
+#Response variable = Nitrogen  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_sn <- 
+  lmer(
+   soil_percentage
+    ~ Treatment 
+    + (1|Block), 
+    data = 
+      cns_cleaned %>% 
+      filter(Element == "Nitrogen")
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r soil nitrogen MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_sn))  
+qqline(resid(me_sn), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_sn)
+
+#Test random effect variance 
+ggplot(
+  cns_cleaned %>% filter(Element == "Nitrogen"), 
+  aes(x = factor(Block),
+      y = soil_percentage
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Nitrogen Percentage") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil nitrogen output, message=FALSE, warning=FALSE}
+plot_predictions(me_sn, by = "Treatment", re.form = NA)
+coefplot::coefplot(me_sn)
+```
+
+```{r soil nitrogen MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_sn)
+confint(me_sn)
+```
+
+```{r soil nitrogen MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_sn)
+```
+
+------------------------------------------------------------------------
+
+## 2.2 \| Explore the effect of precipitation treatment on ecosystem soil nitrates
+
+##### Clean and format the data
+
+```{r organise ic_september24, message=FALSE, warning=FALSE}
+#Convert the dataframe into a long format and keep only the sulphate in ppm column 
+ic_cleaned <- 
+  
+  ic_september24 %>% 
+  
+  dplyr::select(block, treatment, ppm_nitrate)
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for ic_cleaned, message=FALSE, warning=FALSE}
+ic_summary <- 
+  
+  ic_cleaned %>%
+  
+  #Group by treatment  
+  group_by(
+    treatment
+  ) %>%
+  
+  #Calculate summary statistics 
+  summarise( 
+    mean =
+      mean(ppm_nitrate, na.rm=TRUE),
+      se = sd(ppm_nitrate) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  
+  #Ungroup data 
+  ungroup() %>%
+ 
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation"))) %>%
+  
+  #Add a column called facet filled with Nitrate 
+  mutate(Facet = "Nitrate")
+
+ic_cleaned$Facet <- "Nitrate"
+```
+
+##### Plot data
+
+```{r plot ic_cleaned data, message=FALSE, warning=FALSE}
+#Make a soil nitrate plot
+soil_nitrate_plot <-
+  
+ #Make the plot
+  ggplot(
+  ic_summary, 
+       aes(
+         x = treatment, 
+         y = mean)) +
+    
+  #Add data points for soil nitrates 
+  geom_point(
+    data = ic_summary, 
+    aes(x = treatment, 
+        y = mean,
+        color = treatment), 
+    size = 2, 
+    ) +
+  
+#Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+   # Manually set colors to represent aridity scale
+scale_colour_manual(
+  values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",     
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"           
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Nitrate (ppm)"
+  ) +
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7, family = "Times New Roman"), 
+    axis.text.y = element_text(size = 7, family = "Times New Roman"), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10), family = "Times New Roman"),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+    #Add a bar at the top that reads nitrate 
+  facet_wrap(~Facet) 
+```
+
+```{r print soil nitrate plot, fig.width=3, fig.height=5, message=FALSE, warning=FALSE}
+print(soil_nitrate_plot)
+```
+
+##### Create MEM
+
+```{r soil nitrate MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_soilnitrate (soil nitrate)
+#Response variable = Nitrate  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_soilnitrate <- 
+  lmer(
+   ppm_nitrate
+    ~ treatment 
+    + (1|block), 
+    data = 
+     ic_cleaned
+    )
+```
+
+##### Test assumptions for the MEM
+
+```{r soil nitrate MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_soilnitrate))  
+qqline(resid(me_soilnitrate), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_soilnitrate)
+
+#Test random effect variance 
+ggplot(
+  ic_cleaned,
+  aes(x = factor(block),
+      y = ppm_nitrate
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Nitrate Concentration") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil nitrate output, message=FALSE, warning=FALSE}
+plot_predictions(me_soilnitrate, by = "treatment", re.form = NA)
+coefplot::coefplot(me_soilnitrate)
+```
+
+```{r soil nitrate MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_soilnitrate)
+confint(me_soilnitrate)
+```
+
+```{r soil nitrate MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_soilnitrate)
+```
+
+```{r  soil nitrate percentage change, message = FALSE, warning = FALSE}
+#Calculate percentage change and SE 
+deltaMethod(me_soilnitrate, "-100 * treatmentDrought / (Intercept)")
+```
+
+------------------------------------------------------------------------
+
+## 2.3 \| Explore the effect of precipitation treatment on ecosystem soil organic matter content
+
+##### Clean and format the data
+
+```{r format loi_september24, mesaage=FALSE, warning=FALSE}
+loi_cleaned <- 
+  
+  loi_september24
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for loi_cleaned, message=FALSE, warning=FALSE}
+loi_summary <- 
+  
+  loi_cleaned %>%
+  
+  #Group by treatment  
+  group_by(
+    treatment
+  ) %>%
+  
+  #Calculate summary statistics 
+  summarise( 
+    mean =
+      mean(percentage_organic_matter, na.rm=TRUE),
+      se = sd(percentage_organic_matter) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  
+  #Ungroup data 
+  ungroup() %>%
+ 
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation"))) %>%
+  
+  #Add a column called facet filled with Nitrate 
+  mutate(Facet = "Soil Organic Matter")
+
+loi_summary$Facet <- "Soil Organic Matter"
+```
+
+```{r calculate mean soil organic matter all experimental quadrats, message=FALSE, warning=FALSE}
+mean(loi_cleaned$percentage_organic_matter, na.rm = TRUE)
+std.error(loi_cleaned$percentage_organic_matter, na.rm = TRUE)
+```
+
+##### Plot data
+
+```{r plot loi_cleaned data, message=FALSE, warning=FALSE}
+#Make a soil nitrate plot
+soil_organic_matter_plot <-
+  
+#Make the plot
+  ggplot(
+  loi_summary, 
+       aes(
+         x = treatment, 
+         y = mean)) +
+  
+  #Add data pointS for the SOM
+  geom_point(
+    data = loi_summary, 
+    aes(x = treatment, 
+        y = mean,
+        color = treatment), 
+    size = 2, 
+    ) +
+  
+#Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+   # Manually set colors to represent aridity scale
+scale_colour_manual(
+  values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",    
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"          
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Organic Matter (%)"
+    ) +
+  
+  #Set theme 
+  theme_bw(base_family = "Times New Roman") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7, family = "Times New Roman"), 
+    axis.text.y = element_text(size = 7, family = "Times New Roman"), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10), family = "Times New Roman"),
+    title.position = "none",
+    legend.position = "none"
+    ) +        
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+    #Add a bar at the top that reads SOM 
+  facet_wrap(~Facet) 
+```
+
+```{r print soil organic matter plot, fig.width=3, fig.height=5, message=FALSE, warning=FALSE}
+print(soil_organic_matter_plot)
+```
+
+##### Create MEM
+
+```{r soil organic matter MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_som (soil organic matter)
+#Response variable = Soil Organic Matter   
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_som <- 
+  lmer(
+   percentage_organic_matter
+    ~ treatment 
+    + (1|block), 
+    data = 
+     loi_cleaned
+    ) 
+```
+
+##### Test assumptions for the MEM
+
+```{r soil organic matter MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_som))  
+qqline(resid(me_som), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_som)
+
+#Test random effect variance 
+ggplot(
+  loi_cleaned,
+  aes(x = factor(block),
+      y = percentage_organic_matter
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Organic Matter (%)") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil organic matter MEM output, message=FALSE, warning=FALSE}
+plot_predictions(me_som, by = "treatment", re.form = NA)
+coefplot::coefplot(me_som)
+```
+
+```{r soil organic matter MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_som)
+confint(me_som)
+```
+
+```{r soil organic matter MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+ggeffect(me_som)
+```
+
+------------------------------------------------------------------------
+
+## 2.4 \| Combine plots
+
+```{r print soil nutrient figure, fig.width=6, fig.height=9, message=FALSE, warning=FALSE}
+#Create an empty plot to add a space between the graphs 
+empty_plot <- 
+  ggplot() + 
+  theme_void()
+
+#Join the midseason biomass and productivity plots togather 
+grid.arrange(
+  soil_carbon_plot, 
+  empty_plot,
+  soil_nitrogen_plot,
+  empty_plot,
+  empty_plot,
+  empty_plot,
+  soil_nitrate_plot,
+  empty_plot,
+  soil_organic_matter_plot,
+  ncol = 3,  
+  nrow = 3,
+  widths = c(1, 0.1, 1), 
+  heights = c(1,0.1,1)
+)
+```
+
+------------------------------------------------------------------------
+
+## 2.5 \| Analysis and plots for additional data
+
+### Soil Sulphur
+
+##### Plot data
+
+```{r make a soil sulphur plot, message = FALSE, warning = FALSE}
+#Make a soil sulphur plot
+soil_sulphur_plot <-
+  
+  #Make the plot
+  ggplot(
+  (summary_cns %>% filter(Element == "Sulphur")), 
+       aes(
+         x = Treatment, 
+         y = mean)) +
+    
+  #Add data points for the soil sulphur percentage 
+  geom_point(
+    data = (summary_cns %>% filter(Element == "Sulphur")), 
+    aes(x = Treatment, 
+        y = mean,
+        color = Treatment), 
+    size = 2, 
+    ) +
+  
+  #Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = Treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+  # Manually set colors to represent aridity scale
+  scale_colour_manual(
+   values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",    
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"         
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Sulphur (%)"
+  ) +
+  
+  #Set theme 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7), 
+    axis.text.y = element_text(size = 7), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10)),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+  #Add a bar at the top that reads Sulphur  
+  facet_wrap(~Facet) 
+```
+
+```{r print soil sulphur plot, fig.width=4, fig.height=3, message=FALSE, warning=FALSE}
+print(soil_sulphur_plot)
+```
+
+##### Create MEM
+
+```{r soil sulphur MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_ss (soil sulphur)
+#Response variable = Sulphur  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_ss <- 
+  lmer(
+   soil_percentage
+    ~ Treatment 
+    + (1|Block), 
+    data = 
+      cns_cleaned %>% 
+      filter(Element == "Sulphur")
+    )
+```
+
+##### Test assumptions for MEM
+
+```{r soil sulphur MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_ss))  
+qqline(resid(me_ss), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_ss)
+
+#Test random effect variance 
+ggplot(
+  cns_cleaned %>% filter(Element == "Sulphur"), 
+  aes(x = factor(Block),
+      y = soil_percentage
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Carbon Percentage") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil sulphur output, message=FALSE, warning=FALSE}
+plot_predictions(me_ss, by = "Treatment", re.form = NA)
+coefplot::coefplot(me_ss)
+```
+
+```{r soil sulphur MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_ss)
+confint(me_ss)
+```
+
+```{r soil sulphur MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+as.data.frame(ggeffect(me_ss))
+```
+
+### Soil Fluoride
+
+##### Clean and format the data
+
+```{r organise fluoride_cleaned, message=FALSE, warning=FALSE}
+#Convert the dataframe into a long format and keep only the sulphate in ppm column 
+fluoride_cleaned <- 
+  
+  ic_september24 %>% 
+  
+  dplyr::select(block, treatment, ppm_floride)
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for fluoride_cleaned, message=FALSE, warning=FALSE}
+fluoride_summary <- 
+  
+  fluoride_cleaned %>%
+  
+  #Group by treatment  
+  group_by(
+    treatment
+  ) %>%
+  
+  #Calculate summary statistics 
+  summarise( 
+    mean =
+      mean(ppm_floride, na.rm=TRUE),
+      se = sd(ppm_floride) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  
+  #Ungroup data 
+  ungroup() %>%
+ 
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation"))) %>%
+  
+  #Add a column called facet filled with Floride 
+  mutate(Facet = "Floride")
+
+fluoride_summary$Facet <- "Fluoride"
+```
+
+##### Plot data
+
+```{r plot fluoride_cleaned data, message=FALSE, warning=FALSE}
+#Make a soil floride plot
+soil_floride_plot <-
+  
+ #Make the plot
+  ggplot(
+  fluoride_summary, 
+       aes(
+         x = treatment, 
+         y = mean)) +
+    
+  #Add data points for soil floride 
+  geom_point(
+    data = fluoride_summary, 
+    aes(x = treatment, 
+        y = mean,
+        color = treatment), 
+    size = 2, 
+    ) +
+  
+#Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+   # Manually set colors to represent aridity scale
+scale_colour_manual(
+  values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",     
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"           
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Fluoride (ppm)"
+  ) +
+  
+  #Set theme 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7), 
+    axis.text.y = element_text(size = 7), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10)),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+    #Add a bar at the top that reads floride 
+  facet_wrap(~Facet) 
+```
+
+```{r print soil floride plot, fig.width=4, fig.height=3, message=FALSE, warning=FALSE}
+print(soil_floride_plot)
+```
+
+##### Create MEM
+
+```{r soil fluoride MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_soilfloride (soil floride)
+#Response variable = Floride  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_soilfloride <- 
+  lmer(
+   ppm_floride
+    ~ treatment 
+    + (1|block), 
+    data = 
+     fluoride_cleaned
+    )
+```
+
+##### Test assumptions for the MEM
+
+```{r soil fluoride MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_soilfloride))  
+qqline(resid(me_soilfloride), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_soilfloride)
+
+#Test random effect variance 
+ggplot(
+  fluoride_cleaned,
+  aes(x = factor(block),
+      y = ppm_floride
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Floride Concentration (ppm)") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil fluoride output, message=FALSE, warning=FALSE}
+plot_predictions(me_soilfloride, by = "treatment", re.form = NA)
+coefplot::coefplot(me_soilfloride)
+```
+
+```{r soil fluoride MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_soilfloride)
+confint(me_soilfloride)
+```
+
+```{r soil fluoride MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+as.data.frame(ggeffect(me_soilfloride))
+```
+
+------------------------------------------------------------------------
+
+### Soil Chloride
+
+##### Clean and format the data
+
+```{r organise chloride_cleaned, message=FALSE, warning=FALSE}
+#Convert the dataframe into a long format and keep only the chloride in ppm column 
+chloride_cleaned <- 
+  
+  ic_september24 %>% 
+  
+  dplyr::select(block, treatment, ppm_chloride)
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for chloride_cleaned, message=FALSE, warning=FALSE}
+chloride_summary <- 
+  
+  chloride_cleaned %>%
+  
+  #Group by treatment  
+  group_by(
+    treatment
+  ) %>%
+  
+  #Calculate summary statistics 
+  summarise( 
+    mean =
+      mean(ppm_chloride, na.rm=TRUE),
+      se = sd(ppm_chloride) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  
+  #Ungroup data 
+  ungroup() %>%
+ 
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation"))) %>%
+  
+  #Add a column called facet filled with Nitrate 
+  mutate(Facet = "Chloride")
+
+fluoride_summary$Facet <- "Chloride"
+```
+
+##### Plot data
+
+```{r plot chloride_cleaned data, message=FALSE, warning=FALSE}
+#Make a soil chloride plot
+soil_chloride_plot <-
+  
+ #Make the plot
+  ggplot(
+  chloride_summary, 
+       aes(
+         x = treatment, 
+         y = mean)) +
+    
+  #Add data points for soil nitrates 
+  geom_point(
+    data = chloride_summary, 
+    aes(x = treatment, 
+        y = mean,
+        color = treatment), 
+    size = 2, 
+    ) +
+  
+#Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+   # Manually set colors to represent aridity scale
+scale_colour_manual(
+  values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",     
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"           
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Chloride (ppm)"
+  ) +
+  
+  #Set theme 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7), 
+    axis.text.y = element_text(size = 7), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10)),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+    #Add a bar at the top that reads nitrate 
+  facet_wrap(~Facet) 
+```
+
+```{r print soil chloride plot, fig.width=4, fig.height=3, message=FALSE, warning=FALSE}
+print(soil_chloride_plot)
+```
+
+##### Create MEM
+
+```{r soil chloride MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_soilchloride (soil chloride)
+#Response variable = Chloride  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_soilchloride <- 
+  lmer(
+   ppm_chloride
+    ~ treatment 
+    + (1|block), 
+    data = 
+     chloride_cleaned
+    )
+```
+
+##### Test assumptions for the MEM
+
+```{r soil Chloride MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_soilchloride))  
+qqline(resid(me_soilchloride), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_soilfloride)
+
+#Test random effect variance 
+ggplot(
+  chloride_cleaned,
+  aes(x = factor(block),
+      y = ppm_chloride
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Chloride Concentration (ppm)") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil chloride output, message=FALSE, warning=FALSE}
+plot_predictions(me_soilchloride, by = "treatment", re.form = NA)
+coefplot::coefplot(me_soilchloride)
+```
+
+```{r soil chloride MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_soilchloride)
+confint(me_soilchloride)
+```
+
+```{r soil chloride MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+as.data.frame(ggeffect(me_soilchloride))
+```
+
+------------------------------------------------------------------------
+
+### Soil Sulphate
+
+##### Clean and format the data
+
+```{r organise sulphate, message=FALSE, warning=FALSE}
+#Convert the dataframe into a long format and keep only the chloride in ppm column 
+sulphate_cleaned <- 
+  
+  ic_september24 %>% 
+  
+  dplyr::select(block, treatment, ppm_sulphate)
+```
+
+##### Calculate summary statistics
+
+```{r summary statistics for sulphate_cleaned, message=FALSE, warning=FALSE}
+sulphate_summary <- 
+  
+  sulphate_cleaned %>%
+  
+  #Group by treatment  
+  group_by(
+    treatment
+  ) %>%
+  
+  #Calculate summary statistics 
+  summarise( 
+    mean =
+      mean(ppm_sulphate, na.rm=TRUE),
+      se = sd(ppm_sulphate) / sqrt(n()), 
+      ci = 1.96 * se) %>%
+  
+  #Ungroup data 
+  ungroup() %>%
+ 
+  #Reorder the data so it is in order of ascending precipitation percentage
+  mutate(treatment = 
+           factor(treatment, 
+                  levels = c("Drought", 
+                             "Ambient Control",
+                             "Procedural Control", 
+                             "Irrigation"))) %>%
+  
+  #Add a column called facet filled with Sulphate 
+  mutate(Facet = "Sulphate")
+
+fluoride_summary$Facet <- "Sulphate"
+```
+
+##### Plot data
+
+```{r plot sulphate_cleaned data, message=FALSE, warning=FALSE}
+#Make a soil sulphate plot
+soil_sulphate_plot <-
+  
+ #Make the plot
+  ggplot(
+  sulphate_summary, 
+       aes(
+         x = treatment, 
+         y = mean)) +
+    
+  #Add data points for soil sulphate 
+  geom_point(
+    data = sulphate_summary, 
+    aes(x = treatment, 
+        y = mean,
+        color = treatment), 
+    size = 2, 
+    ) +
+  
+#Add errorbars with 95% CIs 
+  geom_errorbar(
+    aes(ymin = mean - ci, 
+        ymax = mean + ci,
+        color = treatment), 
+    width = 0.2, 
+    linewidth = 0.5 
+    ) + 
+  
+   # Manually set colors to represent aridity scale
+scale_colour_manual(
+  values = c(
+    "Drought" = "#B76B00",            
+    "Ambient Control" = "#7BAF4F",     
+    "Procedural Control" = "#7BAF4F",  
+    "Irrigation" = "#1B5E42"           
+  )
+) +
+  
+  #Add labels 
+  labs(
+    x = "Treatment",
+    y = "Soil Sulphate (ppm)"
+  ) +
+  
+  #Set theme 
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.x = element_text(size = 7), 
+    axis.text.y = element_text(size = 7), 
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 9, margin = margin(r = 10)),
+    title.position = "none",
+    legend.position = "none"
+    ) + 
+  
+  #Change the x-axis labels to include precipitation percentage 
+  scale_x_discrete(
+    labels = c("Drought" = "Drought\n(50%)", 
+               "Ambient Control" = "Ambient\nControl\n(100%)", 
+               "Procedural Control" = "Procedural\nControl\n(100%)", 
+               "Irrigation" = "Irrigation\n(150%)")) +
+  
+    #Add a bar at the top that reads sulphate 
+  facet_wrap(~Facet) 
+```
+
+```{r print soil sulphate plot, fig.width=4, fig.height=3, message=FALSE, warning=FALSE}
+print(soil_sulphate_plot)
+```
+
+##### Create MEM
+
+```{r soil sulphate MEM, message=FALSE, warning=FALSE }
+#Make the mixed effect model called me_soilsulphate (soil sulphate)
+#Response variable = Sulphate  
+#Fixed effect = Treatment 
+#Random effect = Block 
+me_soilsulphate <- 
+  lmer(
+   ppm_sulphate
+    ~ treatment 
+    + (1|block), 
+    data = 
+     sulphate_cleaned
+    )
+```
+
+##### Test assumptions for the MEM
+
+```{r soil sulphate MEM assumptions, message=FALSE, warning=FALSE}
+#Test for normality of residuals 
+qqnorm(resid(me_soilsulphate))  
+qqline(resid(me_soilsulphate), 
+       col = "red", lwd = 2)  
+
+#Test for homoscedasticity (Residuals vs. Fitted Values Plot)
+plot(me_soilsulphate)
+
+#Test random effect variance 
+ggplot(
+  sulphate_cleaned,
+  aes(x = factor(block),
+      y = ppm_sulphate
+      )) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Random Effect, Block Variance", 
+    x = "Block", 
+    y = "Soil Sulphate Concentration (ppm)") +
+  theme_minimal()
+```
+
+##### MEM output
+
+```{r initial look at soil sulphate output, message=FALSE, warning=FALSE}
+plot_predictions(me_soilsulphate, by = "treatment", re.form = NA)
+coefplot::coefplot(me_soilsulphate)
+```
+
+```{r soil sulphate MEM output, message=FALSE, warning=FALSE}
+#Look at the MEM outputs 
+summary(me_soilsulphate)
+confint(me_soilsulphate)
+```
+
+```{r soil sulphate MEM estimates and confidence intervals, message=FALSE, warning=FALSE}
+#Caluclate marginal effects estimates and confidence intervals
+as.data.frame(ggeffect(me_soilsulphate))
+```
+
+------------------------------------------------------------------------
+
+### 
